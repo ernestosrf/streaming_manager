@@ -1,6 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-from .user import db
+from .db import db
 
 class Content(db.Model):
     id = db.Column(db.Integer, primary_key=True)

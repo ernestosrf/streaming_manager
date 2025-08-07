@@ -6,8 +6,7 @@ from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from datetime import timedelta
-from src.models.user import db
-from src.routes.user import user_bp
+from src.models.db import db
 from src.routes.content import content_bp
 from src.routes.streaming import streaming_bp
 from src.routes.auth import auth_bp
@@ -27,7 +26,6 @@ jwt = JWTManager(app)
 CORS(app, origins=["*"])
 
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
-app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(content_bp, url_prefix='/api')
 app.register_blueprint(streaming_bp, url_prefix='/api')
 
