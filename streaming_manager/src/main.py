@@ -31,14 +31,8 @@ app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(content_bp, url_prefix='/api')
 app.register_blueprint(streaming_bp, url_prefix='/api')
 
-# Database configuration - usar PostgreSQL em produção, SQLite em desenvolvimento
-if os.environ.get('DATABASE_URL'):
-    # Produção - PostgreSQL
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-else:
-    # Desenvolvimento - SQLite
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
-
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
@@ -72,6 +66,3 @@ def serve(path):
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-# Para Vercel - exportar a aplicação
-handler = app

@@ -23,7 +23,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.NODE_ENV === 'production' ? 'https://your-app.vercel.app' : 'http://localhost:5000',
+        target: process.env.NODE_ENV === 'production' ? 'https://your-app.onrender.com' : 'http://localhost:5000',
         changeOrigin: true,
       },
     },

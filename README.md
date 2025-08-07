@@ -75,12 +75,7 @@ streammanager/
 │   ├── src/
 │   ├── package.json
 │   └── vite.config.js
-└── vercel.json                # Configuração Vercel
 ```
-
-### Banco de Dados
-- **Desenvolvimento**: SQLite (local)
-- **Produção**: PostgreSQL
 
 ## 🤝 **Contribuindo**
 
