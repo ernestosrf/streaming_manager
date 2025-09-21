@@ -517,10 +517,15 @@ function App() {
         {/* Filters */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Filter className="w-5 h-5 mr-2" />
-              Filtros
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center">
+                <Filter className="w-5 h-5 mr-2" />
+                Filtros
+              </CardTitle>
+              <div className="text-sm text-muted-foreground">
+                {filteredContent.length} resultado{filteredContent.length !== 1 ? 's' : ''} encontrado{filteredContent.length !== 1 ? 's' : ''}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
