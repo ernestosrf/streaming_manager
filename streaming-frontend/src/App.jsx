@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx'
 import { Label } from '@/components/ui/label.jsx'
 import { Checkbox } from '@/components/ui/checkbox.jsx'
+import { Switch } from '@/components/ui/switch.jsx'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog.jsx'
-import { Search, Plus, Film, Tv, Zap, Filter, BarChart3, Edit, Trash2, LogOut, Shield } from 'lucide-react'
+import { Search, Plus, Film, Tv, Zap, Filter, BarChart3, Edit, Trash2, LogOut, Shield, Eye, EyeOff } from 'lucide-react'
 import LoginModal from '@/components/LoginModal.jsx'
 import useAuth from '@/hooks/useAuth.js'
 import './App.css'
@@ -23,6 +24,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedType, setSelectedType] = useState('all')
   const [selectedStreamings, setSelectedStreamings] = useState([])
+  const [showInactive, setShowInactive] = useState(false)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
@@ -42,17 +44,21 @@ function App() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [showInactive])
 
   useEffect(() => {
     filterContent()
-  }, [content, searchTerm, selectedType, selectedStreamings])
+  }, [content, searchTerm, selectedType, selectedStreamings, showInactive])
 
   const fetchData = async () => {
     try {
       setLoading(true)
+      
+      // Adicionar parâmetro show_inactive na requisição
+      const contentUrl = `${API_BASE}/content${showInactive ? '?show_inactive=true' : ''}`
+      
       const [contentRes, streamingsRes, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/content`),
+        fetch(contentUrl),
         fetch(`${API_BASE}/streamings`),
         fetch(`${API_BASE}/content/stats`)
       ])
@@ -183,6 +189,28 @@ function App() {
       }
     } catch (error) {
       console.error('Erro ao excluir conteúdo:', error)
+      if (error.message.includes('Sessão expirada')) {
+        setIsLoginModalOpen(true)
+      }
+    }
+  }
+
+  const handleToggleActive = async (id) => {
+    if (!isAuthenticated) {
+      setIsLoginModalOpen(true)
+      return
+    }
+    
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/content/${id}/toggle`, {
+        method: 'PATCH',
+      })
+
+      if (response.ok) {
+        fetchData()
+      }
+    } catch (error) {
+      console.error('Erro ao alternar status do conteúdo:', error)
       if (error.message.includes('Sessão expirada')) {
         setIsLoginModalOpen(true)
       }
@@ -474,10 +502,10 @@ function App() {
       </header>      <div className="container mx-auto px-4 py-6">
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Ativo</CardTitle>
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -511,6 +539,16 @@ function App() {
                 <div className="text-2xl font-bold">{stats.by_type.animes}</div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Inativos</CardTitle>
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.total_inactive}</div>
+                <p className="text-xs text-muted-foreground mt-1">Temporariamente</p>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -522,8 +560,20 @@ function App() {
                 <Filter className="w-5 h-5 mr-2" />
                 Filtros
               </CardTitle>
-              <div className="text-sm text-muted-foreground">
-                {filteredContent.length} resultado{filteredContent.length !== 1 ? 's' : ''} encontrado{filteredContent.length !== 1 ? 's' : ''}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="show-inactive"
+                    checked={showInactive}
+                    onCheckedChange={setShowInactive}
+                  />
+                  <Label htmlFor="show-inactive" className="text-sm cursor-pointer">
+                    Mostrar inativos
+                  </Label>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {filteredContent.length} resultado{filteredContent.length !== 1 ? 's' : ''} encontrado{filteredContent.length !== 1 ? 's' : ''}
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -587,14 +637,22 @@ function App() {
         {/* Content Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredContent.map((item) => (
-            <Card key={item.id} className="overflow-hidden">
+            <Card key={item.id} className={`overflow-hidden ${!item.is_active ? 'opacity-60 border-dashed' : ''}`}>
               {item.poster_url && (
-                <div className="aspect-[2/3] overflow-hidden">
+                <div className="aspect-[2/3] overflow-hidden relative">
                   <img
                     src={item.poster_url}
                     alt={item.title}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover ${!item.is_active ? 'grayscale' : ''}`}
                   />
+                  {!item.is_active && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Badge variant="secondary" className="text-xs">
+                        <EyeOff className="w-3 h-3 mr-1" />
+                        Inativo
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               )}
               <CardHeader className="pb-2">
@@ -629,20 +687,41 @@ function App() {
                 )}
                 
                 {/* Botões de Ação */}
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(item)}
-                    className="flex-1"
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    Editar
-                  </Button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(item)}
+                      className="flex-1"
+                    >
+                      <Edit className="w-4 h-4 mr-1" />
+                      Editar
+                    </Button>
+                    
+                    <Button
+                      variant={item.is_active ? "secondary" : "default"}
+                      size="sm"
+                      onClick={() => handleToggleActive(item.id)}
+                      className="flex-1"
+                    >
+                      {item.is_active ? (
+                        <>
+                          <EyeOff className="w-4 h-4 mr-1" />
+                          Desativar
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ativar
+                        </>
+                      )}
+                    </Button>
+                  </div>
                   
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="sm" className="flex-1">
+                      <Button variant="destructive" size="sm" className="w-full">
                         <Trash2 className="w-4 h-4 mr-1" />
                         Excluir
                       </Button>

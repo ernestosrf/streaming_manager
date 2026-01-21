@@ -13,9 +13,14 @@ def get_content():
         streaming_ids = request.args.getlist('streaming_ids')
         genre = request.args.get('genre')
         search = request.args.get('search')
+        show_inactive = request.args.get('show_inactive', 'false').lower() == 'true'
         
         # Query base
         query = Content.query
+        
+        # Filtrar por status ativo (padrão: mostrar apenas ativos)
+        if not show_inactive:
+            query = query.filter(Content.is_active == True)
         
         # Aplicar filtros
         if content_type:
@@ -152,22 +157,45 @@ def delete_content(content_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@content_bp.route('/content/<int:content_id>/toggle', methods=['PATCH'])
+@admin_required
+def toggle_content_active(content_id):
+    try:
+        content = Content.query.get_or_404(content_id)
+        content.is_active = not content.is_active
+        db.session.commit()
+        
+        status = 'ativado' if content.is_active else 'desativado'
+        return jsonify({
+            'message': f'Conteúdo {status} com sucesso',
+            'is_active': content.is_active
+        })
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @content_bp.route('/content/stats', methods=['GET'])
 def get_stats():
     try:
-        total_content = Content.query.count()
-        movies = Content.query.filter_by(type='movie').count()
-        series = Content.query.filter_by(type='series').count()
-        animes = Content.query.filter_by(type='anime').count()
+        # Contar apenas conteúdos ativos
+        total_content = Content.query.filter_by(is_active=True).count()
+        movies = Content.query.filter_by(type='movie', is_active=True).count()
+        series = Content.query.filter_by(type='series', is_active=True).count()
+        animes = Content.query.filter_by(type='anime', is_active=True).count()
+        
+        # Contar inativos
+        total_inactive = Content.query.filter_by(is_active=False).count()
         
         # Estatísticas por streaming
         streaming_stats = []
         streamings = StreamingPlatform.query.filter_by(active=True).all()
         
         for streaming in streamings:
-            count = db.session.query(ContentStreaming).filter_by(
-                streaming_id=streaming.id,
-                available=True
+            count = db.session.query(ContentStreaming).join(Content).filter(
+                ContentStreaming.streaming_id == streaming.id,
+                ContentStreaming.available == True,
+                Content.is_active == True
             ).count()
             
             streaming_stats.append({
@@ -177,6 +205,7 @@ def get_stats():
         
         return jsonify({
             'total_content': total_content,
+            'total_inactive': total_inactive,
             'by_type': {
                 'movies': movies,
                 'series': series,

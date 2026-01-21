@@ -9,6 +9,7 @@ class Content(db.Model):
     type = db.Column(db.String(20), nullable=False)  # 'movie', 'series', 'anime'
     genre = db.Column(db.String(100), nullable=True)
     poster_url = db.Column(db.String(500), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)  # Para desativar temporariamente
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relacionamento com streamings
@@ -25,6 +26,7 @@ class Content(db.Model):
             'type': self.type,
             'genre': self.genre,
             'poster_url': self.poster_url,
+            'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'streamings': [cs.streaming_platform.to_dict() for cs in self.streamings if cs.available]
         }
