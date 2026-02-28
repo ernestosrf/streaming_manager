@@ -1,8 +1,8 @@
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import wraps
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
 
 auth_bp = Blueprint('auth', __name__)
 

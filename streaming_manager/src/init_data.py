@@ -29,9 +29,9 @@ def init_streaming_platforms():
             'logo_url': 'https://logos-world.net/wp-content/uploads/2021/02/Amazon-Prime-Video-Logo.png'
         },
         {
-            'name': 'Apple TV+',
+            'name': 'Pirataria',
             'color': '#000000',
-            'logo_url': 'https://logos-world.net/wp-content/uploads/2021/02/Apple-TV-Logo.png'
+            'logo_url': 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png'
         },
         {
             'name': 'Crunchyroll',
@@ -44,19 +44,9 @@ def init_streaming_platforms():
             'logo_url': 'https://logos-world.net/wp-content/uploads/2021/03/Paramount-Plus-Logo.png'
         },
         {
-            'name': 'Globoplay',
-            'color': '#FF6900',
-            'logo_url': 'https://logoeps.com/wp-content/uploads/2021/03/globoplay-vector-logo.png'
-        },
-        {
-            'name': 'Pluto TV',
-            'color': '#FFD700',
-            'logo_url': 'https://logos-world.net/wp-content/uploads/2021/03/Pluto-TV-Logo.png'
-        },
-        {
-            'name': 'Star+',
-            'color': '#1CE783',
-            'logo_url': 'https://logos-world.net/wp-content/uploads/2021/08/Star-Plus-Logo.png'
+            'name': 'Mercado Play',
+            'color': '#FFE600',
+            'logo_url': 'https://logodownload.org/wp-content/uploads/2018/10/mercado-livre-logo.png'
         }
     ]
     

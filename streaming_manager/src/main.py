@@ -1,6 +1,8 @@
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
