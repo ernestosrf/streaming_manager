@@ -39,6 +39,8 @@ instance/
 *.db
 *.sqlite
 *.sqlite3
+# Exceção: seed para migração inicial SQLite → Postgres no Render
+!src/database/app.db
 
 # PyCharm
 .idea/

@@ -31,15 +31,27 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(content_bp, url_prefix='/api')
 app.register_blueprint(streaming_bp, url_prefix='/api')
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
+# Database configuration: DATABASE_URL (Postgres no Render) ou SQLite local
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Render usa postgres://; SQLAlchemy exige postgresql://
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = (
+        f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
+    )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
-# Inicializar banco apenas se não estiver em produção sem variáveis de ambiente específicas
 try:
     with app.app_context():
         db.create_all()
+        # REMOVER após o primeiro deploy com Postgres (migração one-shot do app.db)
+        if os.environ.get('DATABASE_URL'):
+            from src.migrate_sqlite_to_postgres import run_migration_if_needed
+            run_migration_if_needed()
 except Exception as e:
     print(f"Database initialization error: {e}")
 
