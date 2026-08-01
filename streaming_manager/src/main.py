@@ -48,10 +48,6 @@ db.init_app(app)
 try:
     with app.app_context():
         db.create_all()
-        # REMOVER após o primeiro deploy com Postgres (migração one-shot do app.db)
-        if os.environ.get('DATABASE_URL'):
-            from src.migrate_sqlite_to_postgres import run_migration_if_needed
-            run_migration_if_needed()
 except Exception as e:
     print(f"Database initialization error: {e}")
 
