@@ -1,86 +1,124 @@
-# Stream Manager
+# Streaming Manager
 
-Uma aplicação full-stack para **gerenciamento de conteúdo de streaming** com Flask (backend) e React (frontend).
+Uma aplicação full-stack para **gerenciamento de conteúdo de streaming** com Flask (backend) e React (frontend), agora com **watchlists públicas por usuário**.
 
-## 🎯 **O que é o Stream Manager?**
+## O que é o Streaming Manager?
 
-O Stream Manager é uma ferramenta completa para **catalogar, organizar e gerenciar** seu conteúdo de entretenimento disponível em diferentes plataformas de streaming.
+O Streaming Manager cataloga filmes, séries e animes disponíveis em diferentes plataformas. Cada pessoa aprovada tem a própria watchlist pública. A lista principal do administrador continua em `/`.
 
-### 🌟 **Principais Funcionalidades**
+### Funcionalidades
 
-#### **📚 Catálogo de Conteúdo**
-- **Filmes, Séries e Animes**: Cadastre e organize todo seu conteúdo
-- **Informações Detalhadas**: Título, ano, gênero, poster e mais
-- **Busca Inteligente**: Encontre rapidamente o que procura
+- Watchlist pública do administrador em `/`
+- Watchlist pública de cada usuário ativo em `/{username}`
+- Cadastro com aprovação manual do administrador
+- Edição apenas pelo dono da lista
+- Sugestões de conteúdo a partir de outras watchlists ativas (cópia independente)
+- Painel administrativo para contas, senhas e plataformas globais
 
-#### **🎭 Plataformas de Streaming**
-- **Netflix, Amazon Prime, Disney+, HBO Max** e outras
-- **Disponibilidade**: Saiba onde cada conteúdo está disponível
-- **Gerenciamento**: Adicione novas plataformas conforme necessário
-
-#### **📊 Dashboard e Estatísticas**
-- **Visão Geral**: Total de filmes, séries e animes
-- **Por Plataforma**: Quantos títulos cada streaming possui
-- **Filtros Avançados**: Por tipo, gênero e plataforma
-
-#### **🔐 Sistema de Administração**
-- **Acesso Público**: Qualquer um pode **visualizar** o catálogo
-- **Operações Admin**: Apenas administradores podem **criar/editar/excluir**
-- **Login Seguro**: Autenticação via JWT com modal integrado
-
-## 🛠️ Desenvolvimento Local
+## Desenvolvimento local
 
 ### Backend (Flask)
+
 ```bash
 cd streaming_manager
 pip install -r requirements.txt
-python src/init_data.py  # apenas na primeira execução para popular o DB com as plataformas de streaming
+```
+
+Configure `streaming_manager/.env` a partir de `.env.example`. **Antes da primeira migração**, preencha `ADMIN_USERNAME` e `ADMIN_PASSWORD` (mínimo 8 caracteres). Esses valores criam a conta administrativa e vinculam a watchlist atual a ela. Sem isso, a migração é interrompida de propósito e o banco original é preservado.
+
+```bash
+python migrate.py          # backup do SQLite (se existir) + migrações
+python src/init_data.py    # apenas se ainda não houver plataformas
 python src/main.py
 ```
 
 ### Frontend (React)
+
 ```bash
 cd streaming-frontend
 npm install
 npm run dev
 ```
 
-### 🔄 **Importante: Sincronização Frontend-Backend**
+Acesse `http://localhost:5173`. A API roda em `http://localhost:5000`.
 
-Existem **duas formas** de acessar a aplicação:
+### Backend + frontend estático
 
-#### **Opção 1: Desenvolvimento Completo (Recomendado)**
-1. **Rode o backend**: `cd streaming_manager && python src/main.py` 
-2. **Rode o frontend**: `cd streaming-frontend && npm run dev`
-3. **Acesse**: `http://localhost:5173` (Vite - com autenticação)
-4. **API**: `http://localhost:5000` (Flask)
+```bash
+cd streaming-frontend
+npm run build
+# PowerShell
+Copy-Item "dist\*" "..\streaming_manager\src\static\" -Recurse -Force
+cd ..\streaming_manager
+python src/main.py
+```
 
-#### **Opção 2: Backend + Frontend Estático**
-1. **Faça build do frontend**: `cd streaming-frontend && npm run build`
-2. **Copie para static**: `Copy-Item "dist\*" "..\streaming_manager\src\static\" -Recurse -Force`
-3. **Rode apenas o backend**: `cd streaming_manager && python src/main.py`
-4. **Acesse**: `http://localhost:5000` (Flask servindo tudo)
+Acesse `http://localhost:5000`.
 
-## 📁 Estrutura do Projeto
+## Variáveis de ambiente
+
+| Variável | Uso |
+| --- | --- |
+| `FLASK_SECRET_KEY` | Chave da sessão Flask |
+| `JWT_SECRET_KEY` | Assinatura dos tokens JWT |
+| `ADMIN_USERNAME` | Username do administrador **inicial** (somente a primeira migração) |
+| `ADMIN_PASSWORD` | Senha do administrador **inicial** (mínimo 8 caracteres; somente a primeira migração) |
+| `CORS_ORIGINS` | Origens permitidas, separadas por vírgula. Em produção, use o domínio real |
+| `DATABASE_URL` | Postgres em produção. Vazio = SQLite em `src/database/app.db` |
+
+Depois da primeira migração, o login consulta usuários e hashes no banco. As credenciais de ambiente deixam de ser o mecanismo normal de autenticação.
+
+Não use senhas padrão inseguras. Defina chaves e a senha inicial no ambiente de produção.
+
+## Backup e migração
+
+1. **SQLite local:** `python migrate.py` copia `src/database/app.db` para `src/database/backups/` e aplica as migrações.
+2. **Postgres:** faça `pg_dump` antes e execute `python migrate.py` (o backup automático de arquivo é ignorado).
+3. A migração cria a tabela `users`, adiciona `owner_id` aos conteúdos, cria o admin a partir de `ADMIN_USERNAME`/`ADMIN_PASSWORD` e vincula os títulos existentes a essa conta.
+
+Alternativa com Flask CLI, a partir de `streaming_manager`:
+
+```bash
+# PowerShell
+$env:FLASK_APP = "src.main:app"
+flask db upgrade
+```
+
+## Testes, lint e build
+
+```bash
+cd streaming_manager
+pytest
+```
+
+```bash
+cd streaming-frontend
+npm run lint
+npm run build
+```
+
+Após o build, copie `streaming-frontend/dist/*` para `streaming_manager/src/static/` se o Flask for servir o frontend.
+
+## Rotas principais
+
+| Rota | Descrição |
+| --- | --- |
+| `/` | Watchlist pública do administrador |
+| `/{username}` | Watchlist pública de um usuário ativo |
+| `/{username-do-admin}` | Redireciona para `/` |
+| `/login` | Login |
+| `/register` | Cadastro (conta fica pendente) |
+| `/account` | Alterar a própria senha |
+| `/admin` | Painel privado do administrador |
+
+## Estrutura
 
 ```
 streammanager/
 ├── streaming_manager/          # Backend Flask
-│   ├── src/
-│   │   ├── main.py            # Aplicação principal
-│   │   ├── models/            # Modelos do banco
-│   │   └── routes/            # Rotas da API
-│   └── requirements.txt
-├── streaming-frontend/         # Frontend React
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.js
+│   ├── migrate.py
+│   ├── migrations/
+│   ├── tests/
+│   └── src/
+└── streaming-frontend/         # Frontend React
 ```
-
-## 🤝 **Contribuindo**
-
-1. **Fork** o projeto
-2. **Crie** uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
-3. **Commit** suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. **Push** para a branch (`git push origin feature/nova-funcionalidade`)
-5. **Abra** um Pull Request

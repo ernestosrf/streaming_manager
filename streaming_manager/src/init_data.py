@@ -4,9 +4,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from src.models.content import StreamingPlatform, db
 
+
 def init_streaming_platforms():
     """Inicializa as plataformas de streaming brasileiras"""
-    
+
     platforms = [
         {
             'name': 'Netflix',
@@ -49,19 +50,18 @@ def init_streaming_platforms():
             'logo_url': 'https://logodownload.org/wp-content/uploads/2018/10/mercado-livre-logo.png'
         }
     ]
-    
+
     for platform_data in platforms:
-        # Verificar se já existe
         existing = StreamingPlatform.query.filter_by(name=platform_data['name']).first()
         if not existing:
             platform = StreamingPlatform(**platform_data)
             db.session.add(platform)
-    
+
     db.session.commit()
     print(f"Inicializadas {len(platforms)} plataformas de streaming")
 
+
 if __name__ == '__main__':
-    from main import app
+    from src.main import app
     with app.app_context():
         init_streaming_platforms()
-

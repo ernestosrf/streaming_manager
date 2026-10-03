@@ -1,0 +1,154 @@
+from src.models.content import Content
+from src.models.db import db
+from tests.conftest import add_content, add_platform, auth_header, create_admin, create_user
+
+
+def test_home_watchlist_is_admin_catalog(client, app):
+    admin = create_admin()
+    other = create_user('maria', 'senha1234')
+    add_content(admin, title='Filme Admin')
+    add_content(other, title='Filme Maria')
+
+    response = client.get('/api/watchlists')
+    assert response.status_code == 200
+    data = response.get_json()
+    titles = [item['title'] for item in data['contents']]
+    assert titles == ['Filme Admin']
+    assert data['owner']['username'] == 'admin'
+
+
+def test_user_watchlist_is_public_and_independent(client, app):
+    admin = create_admin()
+    maria = create_user('maria', 'senha1234')
+    add_content(admin, title='Filme Admin')
+    add_content(maria, title='Filme Maria')
+
+    response = client.get('/api/watchlists/maria')
+    assert response.status_code == 200
+    titles = [item['title'] for item in response.get_json()['contents']]
+    assert titles == ['Filme Maria']
+
+
+def test_meta_exposes_admin_username(client, app):
+    create_admin()
+    response = client.get('/api/meta')
+    assert response.status_code == 200
+    assert response.get_json()['admin_username'] == 'admin'
+
+
+def test_inactive_account_watchlist_is_unavailable(client, app):
+    from src.models.user import STATUS_INACTIVE
+    create_admin()
+    maria = create_user('maria', 'senha1234', status=STATUS_INACTIVE)
+    add_content(maria, title='Escondido')
+    response = client.get('/api/watchlists/maria')
+    assert response.status_code == 404
+
+
+def test_user_cannot_edit_another_watchlist(client, app):
+    admin = create_admin()
+    maria = create_user('maria', 'senha1234')
+    joao = create_user('joao', 'senha1234')
+    content = add_content(maria, title='So Maria')
+    headers = auth_header(client, 'joao', 'senha1234')
+
+    update = client.put(f'/api/content/{content.id}', json={'title': 'Hack'}, headers=headers)
+    assert update.status_code == 403
+
+    admin_headers = auth_header(client, 'admin', 'admin-password')
+    admin_update = client.put(f'/api/content/{content.id}', json={'title': 'Admin edit'}, headers=admin_headers)
+    assert admin_update.status_code == 403
+
+
+def test_owner_can_create_edit_toggle_and_delete(client, app):
+    create_admin()
+    maria = create_user('maria', 'senha1234')
+    platform = add_platform()
+    headers = auth_header(client, 'maria', 'senha1234')
+
+    created = client.post('/api/content', json={
+        'title': 'Interestelar',
+        'year': 2014,
+        'type': 'movie',
+        'genre': 'Ficção',
+        'poster_url': 'http://example.com/i.jpg',
+        'streaming_ids': [platform.id],
+    }, headers=headers)
+    assert created.status_code == 201
+    content_id = created.get_json()['id']
+
+    updated = client.put(f'/api/content/{content_id}', json={'title': 'Interstellar'}, headers=headers)
+    assert updated.status_code == 200
+    assert updated.get_json()['title'] == 'Interstellar'
+
+    toggled = client.patch(f'/api/content/{content_id}/toggle', headers=headers)
+    assert toggled.status_code == 200
+    assert toggled.get_json()['is_active'] is False
+
+    public = client.get('/api/watchlists/maria')
+    assert public.get_json()['contents'] == []
+
+    owner_view = client.get('/api/watchlists/maria?show_inactive=true', headers=headers)
+    assert len(owner_view.get_json()['contents']) == 1
+
+    deleted = client.delete(f'/api/content/{content_id}', headers=headers)
+    assert deleted.status_code == 200
+
+
+def test_suggestions_copy_is_independent(client, app):
+    admin = create_admin()
+    maria = create_user('maria', 'senha1234')
+    platform = add_platform()
+    original = add_content(admin, title='Matrix', year=1999, streamings=[platform])
+    headers = auth_header(client, 'maria', 'senha1234')
+
+    suggestions = client.get('/api/content/suggestions?q=mat', headers=headers)
+    assert suggestions.status_code == 200
+    payload = suggestions.get_json()
+    assert payload[0]['title'] == 'Matrix'
+    assert 'owner' not in payload[0]
+
+    copied = client.post('/api/content', json={
+        'title': payload[0]['title'],
+        'year': payload[0]['year'],
+        'type': payload[0]['type'],
+        'genre': payload[0]['genre'],
+        'poster_url': payload[0]['poster_url'],
+        'streaming_ids': [platform.id],
+    }, headers=headers)
+    assert copied.status_code == 201
+    copy_id = copied.get_json()['id']
+    assert copy_id != original.id
+
+    client.put(f'/api/content/{original.id}', json={'title': 'Matrix Reloaded'}, headers=auth_header(client, 'admin', 'admin-password'))
+    copy = db.session.get(Content, copy_id)
+    assert copy.title == 'Matrix'
+
+
+def test_suggestions_ignore_inactive_content_and_accounts(client, app):
+    from src.models.user import STATUS_PENDING
+    admin = create_admin()
+    pending = create_user('pendente', 'senha1234', status=STATUS_PENDING)
+    maria = create_user('maria', 'senha1234')
+    add_content(admin, title='Inativo Admin', active=False)
+    add_content(pending, title='Pendente Filme')
+    add_content(admin, title='Ativo Admin')
+    headers = auth_header(client, 'maria', 'senha1234')
+
+    suggestions = client.get('/api/content/suggestions?q=ati', headers=headers)
+    titles = [item['title'] for item in suggestions.get_json()]
+    assert 'Ativo Admin' in titles
+    assert 'Inativo Admin' not in titles
+    assert 'Pendente Filme' not in titles
+
+
+def test_only_admin_manages_platforms(client, app):
+    create_admin()
+    create_user('maria', 'senha1234')
+    maria_headers = auth_header(client, 'maria', 'senha1234')
+    forbidden = client.post('/api/streamings', json={'name': 'Foo'}, headers=maria_headers)
+    assert forbidden.status_code == 403
+
+    admin_headers = auth_header(client, 'admin', 'admin-password')
+    created = client.post('/api/streamings', json={'name': 'Foo', 'color': '#000000'}, headers=admin_headers)
+    assert created.status_code == 201
