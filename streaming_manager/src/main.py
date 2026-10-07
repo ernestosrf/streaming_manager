@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 from datetime import timedelta
 
@@ -29,12 +30,11 @@ jwt = JWTManager()
 
 @event.listens_for(Engine, 'connect')
 def _set_sqlite_pragma(dbapi_connection, connection_record):
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute('PRAGMA foreign_keys=ON')
-        cursor.close()
-    except Exception:
-        pass
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute('PRAGMA foreign_keys=ON')
+    cursor.close()
 
 
 def _cors_origins():
@@ -45,8 +45,8 @@ def _cors_origins():
 
 def create_app(config_overrides=None):
     app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-change-me')
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', app.config['SECRET_KEY'])
+    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
     app.config['JWT_ALGORITHM'] = 'HS256'
 
@@ -65,6 +65,13 @@ def create_app(config_overrides=None):
 
     if config_overrides:
         app.config.update(config_overrides)
+
+    missing = [key for key in ('SECRET_KEY', 'JWT_SECRET_KEY') if not app.config.get(key)]
+    if missing:
+        raise RuntimeError(
+            'Defina FLASK_SECRET_KEY e JWT_SECRET_KEY no ambiente (.env) antes de iniciar a aplicação. '
+            f'Ausentes: {", ".join(missing)}'
+        )
 
     db.init_app(app)
     jwt.init_app(app)
@@ -108,4 +115,6 @@ def create_app(config_overrides=None):
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    debug = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true')
+    host = os.environ.get('FLASK_RUN_HOST', '127.0.0.1')
+    app.run(host=host, port=5000, debug=debug)
