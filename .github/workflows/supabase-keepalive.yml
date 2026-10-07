@@ -1,0 +1,30 @@
+# Mantém o projeto Supabase (plano gratuito) ativo.
+# O Supabase pausa projetos gratuitos após 7 dias sem atividade; este job
+# executa uma consulta real no banco uma vez por dia para registrar atividade.
+#
+# Requer o secret SUPABASE_DATABASE_URL (Settings > Secrets and variables > Actions)
+# com a connection string do pooler (IPv4), ex.:
+# postgresql://postgres.<ref>:<senha>@aws-0-<regiao>.pooler.supabase.com:5432/postgres
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # diariamente às 09:00 UTC (06:00 BRT)
+  workflow_dispatch: # permite execução manual pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar o banco
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Secret SUPABASE_DATABASE_URL não configurado"
+            exit 1
+          fi
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA \
+            -c "SELECT now() AS pinged_at, (SELECT count(*) FROM content) AS total_content;"
