@@ -1,5 +1,8 @@
-from datetime import datetime
 from src.models.db import db
+from src.utils.time import utcnow
+
+
+SUGGESTION_FIELDS = ('id', 'title', 'year', 'type', 'genre', 'poster_url', 'streamings')
 
 
 class Content(db.Model):
@@ -10,7 +13,7 @@ class Content(db.Model):
     genre = db.Column(db.String(100), nullable=True)
     poster_url = db.Column(db.String(500), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
 
     owner = db.relationship('User', back_populates='contents')
@@ -47,19 +50,9 @@ class Content(db.Model):
         return data
 
     def to_suggestion_dict(self):
-        return {
-            'id': self.id,
-            'title': self.title,
-            'year': self.year,
-            'type': self.type,
-            'genre': self.genre,
-            'poster_url': self.poster_url,
-            'streamings': [
-                cs.streaming_platform.to_dict()
-                for cs in self.streamings
-                if cs.available and cs.streaming_platform
-            ],
-        }
+        """Dados copiáveis para outra watchlist (sem status nem dono)."""
+        data = self.to_dict()
+        return {field: data[field] for field in SUGGESTION_FIELDS}
 
 
 class StreamingPlatform(db.Model):
@@ -94,7 +87,7 @@ class ContentStreaming(db.Model):
     content_id = db.Column(db.Integer, db.ForeignKey('content.id'), primary_key=True)
     streaming_id = db.Column(db.Integer, db.ForeignKey('streaming_platform.id'), primary_key=True)
     available = db.Column(db.Boolean, default=True)
-    last_checked = db.Column(db.DateTime, default=datetime.utcnow)
+    last_checked = db.Column(db.DateTime, default=utcnow)
 
     content = db.relationship('Content', back_populates='streamings')
     streaming_platform = db.relationship('StreamingPlatform', back_populates='contents')

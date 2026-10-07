@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { Lock, User } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { ROLE_ADMIN, USER_STATUS } from '@/lib/constants.js'
 
 function LoginPage() {
   const navigate = useNavigate()
@@ -36,7 +37,7 @@ function LoginPage() {
 
       if (response.ok) {
         login(data.access_token, data.user)
-        navigate(data.user.role === 'admin' ? '/' : `/${data.user.username}`)
+        navigate(data.user.role === ROLE_ADMIN ? '/' : `/${data.user.username}`)
         return
       }
 
@@ -64,7 +65,7 @@ function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <Alert variant={status === 'pending' ? 'default' : 'destructive'}>
+              <Alert variant={status === USER_STATUS.PENDING ? 'default' : 'destructive'}>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}

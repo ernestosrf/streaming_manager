@@ -93,6 +93,10 @@ def create_app(config_overrides=None):
     app.register_blueprint(streaming_bp, url_prefix='/api')
     app.register_blueprint(admin_users_bp, url_prefix='/api/admin')
 
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({'error': 'Recurso não encontrado.'}), 404
+
     @app.errorhandler(429)
     def rate_limited(error):
         return jsonify({'error': 'Muitas tentativas. Aguarde um pouco e tente novamente.'}), 429
@@ -111,6 +115,10 @@ def create_app(config_overrides=None):
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
     def serve(path):
+        if path == 'api' or path.startswith('api/'):
+            # Rotas de API inexistentes não devem cair no fallback da SPA.
+            return not_found(None)
+
         static_folder_path = app.static_folder
         if static_folder_path is None:
             return 'Static folder not configured', 404

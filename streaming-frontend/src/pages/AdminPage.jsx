@@ -10,13 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog.jsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { ROLE_ADMIN, USER_STATUS, USER_STATUS_LABELS } from '@/lib/constants.js'
 
-const STATUS_LABELS = {
-  pending: 'Pendente',
-  active: 'Ativo',
-  inactive: 'Inativo',
-  rejected: 'Rejeitado',
-}
 
 const USERS_PER_PAGE = 50
 
@@ -113,7 +108,7 @@ function AdminPage() {
   }
 
   const watchlistPath = (item) => (
-    item.role === 'admin' || item.username === meta?.admin_username ? '/' : `/${item.username}`
+    item.role === ROLE_ADMIN || item.username === meta?.admin_username ? '/' : `/${item.username}`
   )
 
   return (
@@ -147,10 +142,9 @@ function AdminPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="active">Ativo</SelectItem>
-                  <SelectItem value="inactive">Inativo</SelectItem>
-                  <SelectItem value="rejected">Rejeitado</SelectItem>
+                  {Object.entries(USER_STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -172,12 +166,12 @@ function AdminPage() {
                   <TableCell>@{item.username}</TableCell>
                   <TableCell>{item.role}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === 'active' ? 'default' : 'secondary'}>
-                      {STATUS_LABELS[item.status] || item.status}
+                    <Badge variant={item.status === USER_STATUS.ACTIVE ? 'default' : 'secondary'}>
+                      {USER_STATUS_LABELS[item.status] || item.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {item.status === 'active' ? (
+                    {item.status === USER_STATUS.ACTIVE ? (
                       <Button variant="link" className="px-0" asChild>
                         <Link to={watchlistPath(item)}>Ver watchlist</Link>
                       </Button>
@@ -187,7 +181,7 @@ function AdminPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
-                      {item.status === 'pending' && (
+                      {item.status === USER_STATUS.PENDING && (
                         <>
                           <Button size="sm" onClick={() => runAction(`/api/admin/users/${item.id}/approve`, { method: 'POST' })}>
                             Aprovar
@@ -197,17 +191,17 @@ function AdminPage() {
                           </Button>
                         </>
                       )}
-                      {item.status === 'rejected' && (
+                      {item.status === USER_STATUS.REJECTED && (
                         <Button size="sm" onClick={() => runAction(`/api/admin/users/${item.id}/approve`, { method: 'POST' })}>
                           Aprovar
                         </Button>
                       )}
-                      {item.status === 'active' && item.id !== user.id && (
+                      {item.status === USER_STATUS.ACTIVE && item.id !== user.id && (
                         <Button size="sm" variant="secondary" onClick={() => runAction(`/api/admin/users/${item.id}/deactivate`, { method: 'POST' })}>
                           Desativar
                         </Button>
                       )}
-                      {item.status === 'inactive' && (
+                      {item.status === USER_STATUS.INACTIVE && (
                         <Button size="sm" onClick={() => runAction(`/api/admin/users/${item.id}/activate`, { method: 'POST' })}>
                           Ativar
                         </Button>
@@ -215,7 +209,7 @@ function AdminPage() {
                       <Button size="sm" variant="outline" onClick={() => { setError(''); setResetUser(item) }}>
                         Redefinir senha
                       </Button>
-                      {item.id !== user.id && item.role !== 'admin' && (
+                      {item.id !== user.id && item.role !== ROLE_ADMIN && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button size="sm" variant="destructive">Excluir</Button>

@@ -36,6 +36,17 @@ def validate_username(username, *, allow_reserved=False):
     return None
 
 
+def validate_admin_credentials(username, password):
+    """Valida ADMIN_USERNAME/ADMIN_PASSWORD usados para criar o administrador inicial."""
+    username_error = validate_username(username, allow_reserved=True)
+    if username_error:
+        return f'ADMIN_USERNAME inválido: {username_error}'
+    password_error = validate_password(password)
+    if password_error:
+        return f'ADMIN_PASSWORD inválida: {password_error}'
+    return None
+
+
 def validate_password(password):
     if not password or not isinstance(password, str):
         return 'Senha é obrigatória.'

@@ -11,6 +11,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Search, Plus, Film, Tv, Zap, Filter, BarChart3, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
 import ContentFormDialog from '@/components/ContentFormDialog.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { getContentTypeLabel } from '@/lib/constants.js'
+import { SessionExpiredError } from '@/lib/errors.js'
 
 function WatchlistView({ ownerUsername, isHome = false }) {
   const navigate = useNavigate()
@@ -149,7 +151,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       setIsFormOpen(true)
     } catch (error) {
       console.error('Erro ao carregar dados para edição:', error)
-      if (error.message.includes('Sessão expirada')) {
+      if (error instanceof SessionExpiredError) {
         navigate('/login')
       }
     }
@@ -163,7 +165,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       }
     } catch (error) {
       console.error('Erro ao excluir conteúdo:', error)
-      if (error.message.includes('Sessão expirada')) {
+      if (error instanceof SessionExpiredError) {
         navigate('/login')
       }
     }
@@ -181,7 +183,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       }
     } catch (error) {
       console.error('Erro ao alternar status do conteúdo:', error)
-      if (error.message.includes('Sessão expirada')) {
+      if (error instanceof SessionExpiredError) {
         navigate('/login')
       }
     }
@@ -193,15 +195,6 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       case 'series': return <Tv className="w-4 h-4" />
       case 'anime': return <Zap className="w-4 h-4" />
       default: return <Film className="w-4 h-4" />
-    }
-  }
-
-  const getTypeLabel = (type) => {
-    switch (type) {
-      case 'movie': return 'Filme'
-      case 'series': return 'Série'
-      case 'anime': return 'Anime'
-      default: return type
     }
   }
 
@@ -439,7 +432,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
                 <CardTitle className="text-lg line-clamp-1">{item.title}</CardTitle>
                 <Badge variant="outline" className="flex items-center gap-1">
                   {getTypeIcon(item.type)}
-                  {getTypeLabel(item.type)}
+                  {getContentTypeLabel(item.type)}
                 </Badge>
               </div>
               {item.year && <CardDescription>{item.year}</CardDescription>}

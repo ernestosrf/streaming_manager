@@ -3,7 +3,7 @@ import os
 import shutil
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from flask_migrate import upgrade
@@ -21,7 +21,7 @@ def backup_sqlite():
 
     backup_dir = os.path.join(ROOT, 'src', 'database', 'backups')
     os.makedirs(backup_dir, exist_ok=True)
-    stamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
     destination = os.path.join(backup_dir, f'app.db.{stamp}.bak')
     shutil.copy2(db_path, destination)
     print(f'Backup criado em {destination}')
@@ -48,12 +48,15 @@ def ensure_admin_credentials():
         return
     if not sqlite_needs_admin_seed():
         return
+    from src.utils.validators import validate_admin_credentials
+
     username = (os.environ.get('ADMIN_USERNAME') or '').strip()
     password = os.environ.get('ADMIN_PASSWORD') or ''
-    if not username or len(username) < 3 or len(username) > 30 or not password or len(password) < 8:
+    error = validate_admin_credentials(username, password)
+    if error:
         raise SystemExit(
-            'Defina ADMIN_USERNAME e ADMIN_PASSWORD (mínimo 8 caracteres) no .env '
-            'antes de executar a primeira migração. O banco atual não foi alterado.'
+            f'{error}. Corrija o .env antes de executar a primeira migração. '
+            'O banco atual não foi alterado.'
         )
 
 

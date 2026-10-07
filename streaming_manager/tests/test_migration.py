@@ -1,6 +1,8 @@
 import os
 import sqlite3
 
+import pytest
+
 from flask_migrate import upgrade
 
 from src.main import create_app
@@ -83,3 +85,78 @@ def test_migration_assigns_existing_content_to_admin(tmp_path, monkeypatch):
         assert contents[0].title == 'Watchlist Legado'
         assert contents[0].owner_id == admin.id
         assert len(contents[0].streamings) == 1
+
+
+def _migration_app(db_path):
+    return create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path.as_posix()}',
+        'JWT_SECRET_KEY': 'test-jwt-secret',
+        'SECRET_KEY': 'test-secret',
+    })
+
+
+def _table_names(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+
+
+def _content_columns(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        return {row[1] for row in conn.execute('PRAGMA table_info(content)')}
+    finally:
+        conn.close()
+
+
+def test_downgrade_after_fresh_upgrade(tmp_path, monkeypatch):
+    from flask_migrate import downgrade
+    monkeypatch.setenv('ADMIN_USERNAME', 'admin')
+    monkeypatch.setenv('ADMIN_PASSWORD', 'admin-password')
+    db_path = tmp_path / 'fresh.db'
+    migrations_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'migrations'))
+
+    with _migration_app(db_path).app_context():
+        upgrade(directory=migrations_dir)
+        downgrade(directory=migrations_dir, revision='base')
+        db.engine.dispose()
+
+    assert 'users' not in _table_names(db_path)
+    assert 'owner_id' not in _content_columns(db_path)
+
+
+def test_downgrade_after_legacy_upgrade(tmp_path, monkeypatch):
+    from flask_migrate import downgrade
+    monkeypatch.setenv('ADMIN_USERNAME', 'admin')
+    monkeypatch.setenv('ADMIN_PASSWORD', 'admin-password')
+    db_path = tmp_path / 'legacy.db'
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA)
+    conn.close()
+    migrations_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'migrations'))
+
+    with _migration_app(db_path).app_context():
+        upgrade(directory=migrations_dir)
+        downgrade(directory=migrations_dir, revision='base')
+        db.engine.dispose()
+
+    assert 'users' not in _table_names(db_path)
+    assert 'owner_id' not in _content_columns(db_path)
+
+
+def test_migration_rejects_invalid_admin_username(tmp_path, monkeypatch):
+    monkeypatch.setenv('ADMIN_USERNAME', 'Admin User')
+    monkeypatch.setenv('ADMIN_PASSWORD', 'admin-password')
+    db_path = tmp_path / 'invalid.db'
+    migrations_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'migrations'))
+
+    with _migration_app(db_path).app_context():
+        # O Flask-Migrate converte erros da migração em SystemExit.
+        with pytest.raises(SystemExit):
+            upgrade(directory=migrations_dir)
+        db.engine.dispose()
+
+    assert 'users' not in _table_names(db_path)

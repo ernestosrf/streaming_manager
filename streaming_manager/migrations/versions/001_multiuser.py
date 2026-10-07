@@ -5,12 +5,14 @@ Revises:
 Create Date: 2026-04-09
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
+
+from src.utils.validators import validate_admin_credentials
 
 revision = '001_multiuser'
 down_revision = None
@@ -66,7 +68,7 @@ def _create_content_table(with_owner=True, owner_nullable=False):
     ]
     if with_owner:
         columns.append(sa.Column('owner_id', sa.Integer(), nullable=owner_nullable))
-        columns.append(sa.ForeignKeyConstraint(['owner_id'], ['users.id']))
+        columns.append(sa.ForeignKeyConstraint(['owner_id'], ['users.id'], name='fk_content_owner_id'))
     op.create_table('content', *columns)
     if with_owner:
         op.create_index('ix_content_owner_id', 'content', ['owner_id'], unique=False)
@@ -88,12 +90,9 @@ def _create_content_streaming_table():
 def _require_admin_credentials():
     username = (os.environ.get('ADMIN_USERNAME') or '').strip()
     password = os.environ.get('ADMIN_PASSWORD') or ''
-    if not username or len(username) < 3 or len(username) > 30:
-        raise RuntimeError(
-            'ADMIN_USERNAME é obrigatório na primeira migração (3 a 30 caracteres, minúsculas, números e hífen).'
-        )
-    if not password or len(password) < 8:
-        raise RuntimeError('ADMIN_PASSWORD é obrigatória na primeira migração e deve ter no mínimo 8 caracteres.')
+    error = validate_admin_credentials(username, password)
+    if error:
+        raise RuntimeError(f'{error} (obrigatório na primeira migração)')
     return username, password
 
 
@@ -104,7 +103,7 @@ def _seed_admin(conn):
 
     username, password = _require_admin_credentials()
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     conn.execute(
         sa.text(
             """
@@ -181,13 +180,20 @@ def downgrade():
     conn = op.get_bind()
     tables = _table_names(conn)
     if 'content' in tables and 'owner_id' in _column_names(conn, 'content'):
-        with op.batch_alter_table('content') as batch_op:
-            batch_op.drop_constraint('fk_content_owner_id', type_='foreignkey')
-            batch_op.drop_column('owner_id')
-        try:
+        # O índice precisa sair antes da coluna, senão o batch do SQLite tenta recriá-lo.
+        existing_indexes = {index['name'] for index in inspect(conn).get_indexes('content')}
+        if 'ix_content_owner_id' in existing_indexes:
             op.drop_index('ix_content_owner_id', table_name='content')
-        except Exception:
-            pass
+        # O nome da FK varia: nomeada pela migração, gerada pelo Postgres ou sem nome no SQLite.
+        owner_fk_names = [
+            fk['name']
+            for fk in inspect(conn).get_foreign_keys('content')
+            if fk['constrained_columns'] == ['owner_id'] and fk['name']
+        ]
+        with op.batch_alter_table('content') as batch_op:
+            for fk_name in owner_fk_names:
+                batch_op.drop_constraint(fk_name, type_='foreignkey')
+            batch_op.drop_column('owner_id')
     if 'users' in tables:
         op.drop_index('ix_users_status', table_name='users')
         op.drop_index('ix_users_username', table_name='users')

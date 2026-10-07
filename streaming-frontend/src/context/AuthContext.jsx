@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { ROLE_ADMIN } from '@/lib/constants.js'
+import { SessionExpiredError } from '@/lib/errors.js'
 
 /* eslint-disable react-refresh/only-export-components */
 
@@ -80,7 +82,7 @@ export function AuthProvider({ children }) {
 
     if (response.status === 401) {
       logout()
-      throw new Error('Sessão expirada. Faça login novamente.')
+      throw new SessionExpiredError()
     }
 
     return response
@@ -92,7 +94,7 @@ export function AuthProvider({ children }) {
     user,
     loading,
     meta,
-    isAdmin: user?.role === 'admin',
+    isAdmin: user?.role === ROLE_ADMIN,
     login,
     logout,
     getAuthHeaders,

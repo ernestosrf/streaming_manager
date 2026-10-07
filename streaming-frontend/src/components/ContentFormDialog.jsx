@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label.jsx'
 import { Checkbox } from '@/components/ui/checkbox.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { CONTENT_TYPE_LABELS, getContentTypeLabel } from '@/lib/constants.js'
 
 const emptyForm = {
   title: '',
@@ -163,7 +164,7 @@ function ContentFormDialog({
                       <span className="font-medium">{item.title}</span>
                       <span className="ml-2 text-muted-foreground">
                         {item.year ? `${item.year} · ` : ''}
-                        {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Anime'}
+                        {getContentTypeLabel(item.type)}
                       </span>
                     </button>
                   ))}
@@ -189,9 +190,9 @@ function ContentFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="movie">Filme</SelectItem>
-                  <SelectItem value="series">Série</SelectItem>
-                  <SelectItem value="anime">Anime</SelectItem>
+                  {Object.entries(CONTENT_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

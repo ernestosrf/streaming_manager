@@ -152,3 +152,17 @@ def test_only_admin_manages_platforms(client, app):
     admin_headers = auth_header(client, 'admin', 'admin-password')
     created = client.post('/api/streamings', json={'name': 'Foo', 'color': '#000000'}, headers=admin_headers)
     assert created.status_code == 201
+
+
+def test_missing_resources_return_json_404(client, app):
+    create_admin()
+    headers = auth_header(client, 'admin', 'admin-password')
+
+    for response in (
+        client.get('/api/content/9999'),
+        client.put('/api/streamings/9999', json={'name': 'X'}, headers=headers),
+        client.delete('/api/streamings/9999', headers=headers),
+        client.get('/api/rota-inexistente'),
+    ):
+        assert response.status_code == 404
+        assert response.get_json() == {'error': 'Recurso não encontrado.'}

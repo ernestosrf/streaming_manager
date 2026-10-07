@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify
 from sqlalchemy import and_, func, not_
 from sqlalchemy.orm import selectinload
 from src.models.content import Content, StreamingPlatform, ContentStreaming
@@ -135,13 +135,6 @@ def _unknown_streaming_ids(streaming_ids):
     return found != len(streaming_ids)
 
 
-def _get_or_404(model, ident):
-    obj = db.session.get(model, ident)
-    if obj is None:
-        abort(404)
-    return obj
-
-
 def _owner_forbidden():
     return jsonify({'error': 'Você só pode alterar conteúdos da sua própria watchlist.'}), 403
 
@@ -268,7 +261,7 @@ def create_content(current_user):
 @content_bp.route('/content/<int:content_id>', methods=['GET'])
 @jwt_required(optional=True)
 def get_content_by_id(content_id):
-    content = _get_or_404(Content, content_id)
+    content = db.get_or_404(Content, content_id)
     owner = content.owner
     is_owner = _can_see_inactive(owner)
     owner_is_public = owner is not None and owner.status == STATUS_ACTIVE
@@ -281,7 +274,7 @@ def get_content_by_id(content_id):
 @content_bp.route('/content/<int:content_id>', methods=['PUT'])
 @current_user_required
 def update_content(current_user, content_id):
-    content = _get_or_404(Content, content_id)
+    content = db.get_or_404(Content, content_id)
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
@@ -309,7 +302,7 @@ def update_content(current_user, content_id):
 @content_bp.route('/content/<int:content_id>', methods=['DELETE'])
 @current_user_required
 def delete_content(current_user, content_id):
-    content = _get_or_404(Content, content_id)
+    content = db.get_or_404(Content, content_id)
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
@@ -325,7 +318,7 @@ def delete_content(current_user, content_id):
 @content_bp.route('/content/<int:content_id>/toggle', methods=['PATCH'])
 @current_user_required
 def toggle_content_active(current_user, content_id):
-    content = _get_or_404(Content, content_id)
+    content = db.get_or_404(Content, content_id)
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 

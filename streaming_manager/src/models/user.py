@@ -1,6 +1,6 @@
-from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from src.models.db import db
+from src.utils.time import utcnow
 
 ROLE_ADMIN = 'admin'
 ROLE_USER = 'user'
@@ -21,7 +21,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default=ROLE_USER)
     status = db.Column(db.String(20), nullable=False, default=STATUS_PENDING, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     approved_at = db.Column(db.DateTime, nullable=True)
 
     contents = db.relationship(

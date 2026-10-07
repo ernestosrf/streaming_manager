@@ -1,4 +1,3 @@
-from datetime import datetime
 from flask import Blueprint, request, jsonify
 from src.models.db import db
 from src.models.user import (
@@ -11,6 +10,7 @@ from src.models.user import (
     STATUSES,
 )
 from src.utils.auth import admin_required, issue_access_token
+from src.utils.time import utcnow
 from src.utils.validators import validate_password
 
 admin_users_bp = Blueprint('admin_users', __name__)
@@ -70,7 +70,7 @@ def approve_user(current_user, user_id):
 
     user.status = STATUS_ACTIVE
     if not user.approved_at:
-        user.approved_at = datetime.utcnow()
+        user.approved_at = utcnow()
     db.session.commit()
     return jsonify({'message': 'Usuário aprovado com sucesso.', 'user': user.to_dict(include_private=True)})
 
@@ -105,7 +105,7 @@ def activate_user(current_user, user_id):
 
     user.status = STATUS_ACTIVE
     if not user.approved_at:
-        user.approved_at = datetime.utcnow()
+        user.approved_at = utcnow()
     db.session.commit()
     return jsonify({'message': 'Usuário ativado com sucesso.', 'user': user.to_dict(include_private=True)})
 
