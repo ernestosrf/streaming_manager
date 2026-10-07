@@ -35,12 +35,13 @@ function WatchlistView({ ownerUsername, isHome = false }) {
     try {
       setLoading(true)
       setNotFound(false)
+      const ownerPath = encodeURIComponent(ownerUsername ?? '')
       const watchlistUrl = isHome
         ? `/api/watchlists${showInactive ? '?show_inactive=true' : ''}`
-        : `/api/watchlists/${ownerUsername}${showInactive ? '?show_inactive=true' : ''}`
+        : `/api/watchlists/${ownerPath}${showInactive ? '?show_inactive=true' : ''}`
       const statsUrl = isHome
         ? '/api/content/stats'
-        : `/api/watchlists/${ownerUsername}/stats`
+        : `/api/watchlists/${ownerPath}/stats`
 
       const headers = getAuthHeaders()
       const [watchlistRes, streamingsRes, statsRes] = await Promise.all([

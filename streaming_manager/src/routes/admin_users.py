@@ -10,7 +10,7 @@ from src.models.user import (
     STATUS_REJECTED,
     STATUSES,
 )
-from src.utils.auth import admin_required
+from src.utils.auth import admin_required, issue_access_token
 from src.utils.validators import validate_password
 
 admin_users_bp = Blueprint('admin_users', __name__)
@@ -150,4 +150,8 @@ def reset_password(current_user, user_id):
 
     user.set_password(new_password)
     db.session.commit()
-    return jsonify({'message': f'Senha de "{user.username}" redefinida com sucesso.'})
+    payload = {'message': f'Senha de "{user.username}" redefinida com sucesso.'}
+    if user.id == current_user.id:
+        # A troca invalida o token atual do próprio administrador.
+        payload['access_token'] = issue_access_token(user)
+    return jsonify(payload)

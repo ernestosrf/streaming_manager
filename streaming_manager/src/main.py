@@ -14,6 +14,7 @@ from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.models.db import db
 from src.models.user import User  # noqa: F401
@@ -23,6 +24,7 @@ from src.routes.streaming import streaming_bp
 from src.routes.auth import auth_bp
 from src.routes.admin_users import admin_users_bp
 from src.utils.auth import get_admin_user
+from src.utils.rate_limit import limiter
 
 migrate = Migrate()
 jwt = JWTManager()
@@ -62,6 +64,8 @@ def create_app(config_overrides=None):
         os.makedirs(db_dir, exist_ok=True)
         app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(db_dir, "app.db")}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['RATELIMIT_STORAGE_URI'] = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
+    app.config['RATELIMIT_HEADERS_ENABLED'] = True
 
     if config_overrides:
         app.config.update(config_overrides)
@@ -73,8 +77,14 @@ def create_app(config_overrides=None):
             f'Ausentes: {", ".join(missing)}'
         )
 
+    trusted_proxies = int(os.environ.get('TRUSTED_PROXY_COUNT', '0'))
+    if trusted_proxies > 0:
+        # Atrás de proxy (ex.: Render), o IP real do cliente vem em X-Forwarded-For.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_proxies, x_proto=trusted_proxies)
+
     db.init_app(app)
     jwt.init_app(app)
+    limiter.init_app(app)
     migrate.init_app(app, db, directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'migrations'), render_as_batch=True)
     CORS(app, origins=_cors_origins())
 
@@ -82,6 +92,10 @@ def create_app(config_overrides=None):
     app.register_blueprint(content_bp, url_prefix='/api')
     app.register_blueprint(streaming_bp, url_prefix='/api')
     app.register_blueprint(admin_users_bp, url_prefix='/api/admin')
+
+    @app.errorhandler(429)
+    def rate_limited(error):
+        return jsonify({'error': 'Muitas tentativas. Aguarde um pouco e tente novamente.'}), 429
 
     @app.route('/api/health')
     def health_check():

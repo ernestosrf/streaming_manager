@@ -5,6 +5,7 @@ flask-cors==6.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-JWT-Extended==4.6.0
 Flask-Migrate==4.1.0
+Flask-Limiter==4.1.1
 python-dotenv==1.0.0
 pytest==8.3.5
 gunicorn==22.0.0

@@ -1,8 +1,16 @@
+import hashlib
+import hmac
 from functools import wraps
-from flask import jsonify
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from flask import current_app, jsonify
+from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required
 from src.models.db import db
 from src.models.user import User, ROLE_ADMIN
+
+
+def _password_fingerprint(user):
+    """Muda sempre que a senha muda, invalidando tokens emitidos antes da troca."""
+    key = current_app.config['JWT_SECRET_KEY'].encode()
+    return hmac.new(key, user.password_hash.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 def get_user_from_jwt():
@@ -13,7 +21,13 @@ def get_user_from_jwt():
         user_id = int(identity)
     except (TypeError, ValueError):
         return None
-    return db.session.get(User, user_id)
+    user = db.session.get(User, user_id)
+    if not user:
+        return None
+    token_fingerprint = get_jwt().get('pwd')
+    if not token_fingerprint or not hmac.compare_digest(token_fingerprint, _password_fingerprint(user)):
+        return None
+    return user
 
 
 def get_active_user():
@@ -29,6 +43,7 @@ def issue_access_token(user):
         additional_claims={
             'role': user.role,
             'username': user.username,
+            'pwd': _password_fingerprint(user),
         },
     )
 

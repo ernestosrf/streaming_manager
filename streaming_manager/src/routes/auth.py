@@ -1,7 +1,11 @@
+from functools import lru_cache
+
 from flask import Blueprint, request, jsonify
+from werkzeug.security import check_password_hash, generate_password_hash
 from src.models.db import db
 from src.models.user import User, ROLE_USER, STATUS_PENDING, STATUS_ACTIVE, STATUS_INACTIVE, STATUS_REJECTED
-from src.utils.auth import current_user_required, get_active_user, get_user_from_jwt, issue_access_token
+from src.utils.auth import current_user_required, get_user_from_jwt, issue_access_token
+from src.utils.rate_limit import limiter
 from src.utils.validators import validate_password, validate_username
 from flask_jwt_extended import jwt_required
 
@@ -14,7 +18,13 @@ STATUS_LOGIN_MESSAGES = {
 }
 
 
+@lru_cache(maxsize=1)
+def _dummy_password_hash():
+    return generate_password_hash('dummy-password-for-timing')
+
+
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit('5 per hour')
 def register():
     data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip()
@@ -47,6 +57,7 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit('10 per minute; 50 per hour')
 def login():
     data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip()
@@ -56,7 +67,11 @@ def login():
         return jsonify({'error': 'Username e senha são obrigatórios.'}), 400
 
     user = User.query.filter_by(username=username).first()
-    if not user or not user.check_password(password):
+    if not user:
+        # Mesmo custo de hash que um usuário existente, para não revelar quais usernames existem.
+        check_password_hash(_dummy_password_hash(), password)
+        return jsonify({'error': 'Credenciais inválidas.'}), 401
+    if not user.check_password(password):
         return jsonify({'error': 'Credenciais inválidas.'}), 401
 
     if user.status != STATUS_ACTIVE:
@@ -107,6 +122,7 @@ def logout(current_user):
 
 
 @auth_bp.route('/change-password', methods=['POST'])
+@limiter.limit('10 per hour')
 @current_user_required
 def change_password(current_user):
     data = request.get_json(silent=True) or {}
@@ -125,4 +141,9 @@ def change_password(current_user):
 
     current_user.set_password(new_password)
     db.session.commit()
-    return jsonify({'message': 'Senha alterada com sucesso.'}), 200
+    # Tokens antigos deixam de valer após a troca; devolve um novo para a sessão atual.
+    return jsonify({
+        'message': 'Senha alterada com sucesso.',
+        'access_token': issue_access_token(current_user),
+        'user': current_user.to_dict(),
+    }), 200

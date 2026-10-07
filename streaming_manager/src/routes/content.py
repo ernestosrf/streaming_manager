@@ -3,12 +3,12 @@ from sqlalchemy import and_
 from src.models.content import Content, StreamingPlatform, ContentStreaming
 from src.models.db import db
 from src.models.user import User, STATUS_ACTIVE
-from src.utils.auth import current_user_required, get_admin_user
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from src.utils.auth import current_user_required, get_admin_user, get_user_from_jwt
+from src.utils.responses import server_error
+from src.utils.validators import VALID_CONTENT_TYPES, validate_content_payload
+from flask_jwt_extended import jwt_required
 
 content_bp = Blueprint('content', __name__)
-
-VALID_TYPES = ('movie', 'series', 'anime')
 
 
 def _parse_year(value):
@@ -45,14 +45,10 @@ def _apply_content_filters(query):
 
 
 def _can_see_inactive(owner):
-    identity = get_jwt_identity()
-    if identity is None or owner is None:
+    if owner is None:
         return False
-    try:
-        user_id = int(identity)
-    except (TypeError, ValueError):
-        return False
-    return owner.id == user_id
+    viewer = get_user_from_jwt()
+    return viewer is not None and viewer.id == owner.id
 
 
 def _watchlist_query(owner, show_inactive_requested):
@@ -120,6 +116,13 @@ def _replace_streamings(content, streaming_ids):
             streaming_id=streaming_id,
             available=True,
         ))
+
+
+def _unknown_streaming_ids(streaming_ids):
+    if not streaming_ids:
+        return False
+    found = StreamingPlatform.query.filter(StreamingPlatform.id.in_(streaming_ids)).count()
+    return found != len(streaming_ids)
 
 
 def _get_or_404(model, ident):
@@ -207,7 +210,7 @@ def suggest_content(current_user):
         Content.title.ilike(f'%{query_text}%'),
     )
 
-    if content_type in VALID_TYPES:
+    if content_type in VALID_CONTENT_TYPES:
         query = query.filter(Content.type == content_type)
     if year is not None:
         query = query.filter(Content.year == year)
@@ -231,33 +234,25 @@ def suggest_content(current_user):
 @content_bp.route('/content', methods=['POST'])
 @current_user_required
 def create_content(current_user):
-    data = request.get_json(silent=True) or {}
+    fields, error = validate_content_payload(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({'error': error}), 400
 
-    if not data.get('title'):
-        return jsonify({'error': 'Título é obrigatório'}), 400
-
-    if not data.get('type') or data.get('type') not in VALID_TYPES:
-        return jsonify({'error': 'Tipo deve ser movie, series ou anime'}), 400
+    streaming_ids = fields.pop('streaming_ids')
+    if _unknown_streaming_ids(streaming_ids):
+        return jsonify({'error': 'Streaming informado não existe.'}), 400
 
     try:
-        content = Content(
-            title=data.get('title'),
-            year=_parse_year(data.get('year')),
-            type=data.get('type'),
-            genre=data.get('genre'),
-            poster_url=data.get('poster_url'),
-            owner_id=current_user.id,
-        )
+        content = Content(owner_id=current_user.id, **fields)
         db.session.add(content)
         db.session.flush()
 
-        streaming_ids = data.get('streaming_ids', [])
         _replace_streamings(content, streaming_ids)
         db.session.commit()
         return jsonify(content.to_dict()), 201
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return server_error('criar conteúdo')
 
 
 @content_bp.route('/content/<int:content_id>', methods=['GET'])
@@ -265,18 +260,9 @@ def create_content(current_user):
 def get_content_by_id(content_id):
     content = _get_or_404(Content, content_id)
     owner = content.owner
-    if not owner or owner.status != STATUS_ACTIVE:
-        identity = get_jwt_identity()
-        is_owner = False
-        if identity is not None:
-            try:
-                is_owner = int(identity) == content.owner_id
-            except (TypeError, ValueError):
-                is_owner = False
-        if not is_owner:
-            return jsonify({'error': 'Conteúdo não encontrado.'}), 404
-
-    if not content.is_active and not _can_see_inactive(owner):
+    is_owner = _can_see_inactive(owner)
+    owner_is_public = owner is not None and owner.status == STATUS_ACTIVE
+    if not is_owner and (not owner_is_public or not content.is_active):
         return jsonify({'error': 'Conteúdo não encontrado.'}), 404
 
     return jsonify(content.to_dict())
@@ -289,26 +275,25 @@ def update_content(current_user, content_id):
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
-    data = request.get_json(silent=True) or {}
+    fields, error = validate_content_payload(request.get_json(silent=True) or {}, partial=True)
+    if error:
+        return jsonify({'error': error}), 400
+
+    streaming_ids = fields.pop('streaming_ids', None)
+    if streaming_ids is not None and _unknown_streaming_ids(streaming_ids):
+        return jsonify({'error': 'Streaming informado não existe.'}), 400
+
     try:
-        if 'title' in data:
-            content.title = data['title']
-        if 'year' in data:
-            content.year = _parse_year(data['year'])
-        if 'type' in data and data['type'] in VALID_TYPES:
-            content.type = data['type']
-        if 'genre' in data:
-            content.genre = data['genre']
-        if 'poster_url' in data:
-            content.poster_url = data['poster_url']
-        if 'streaming_ids' in data:
-            _replace_streamings(content, data['streaming_ids'])
+        for field, value in fields.items():
+            setattr(content, field, value)
+        if streaming_ids is not None:
+            _replace_streamings(content, streaming_ids)
 
         db.session.commit()
         return jsonify(content.to_dict())
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return server_error('atualizar conteúdo')
 
 
 @content_bp.route('/content/<int:content_id>', methods=['DELETE'])
@@ -322,9 +307,9 @@ def delete_content(current_user, content_id):
         db.session.delete(content)
         db.session.commit()
         return jsonify({'message': 'Conteúdo removido com sucesso'})
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return server_error('remover conteúdo')
 
 
 @content_bp.route('/content/<int:content_id>/toggle', methods=['PATCH'])
@@ -342,6 +327,6 @@ def toggle_content_active(current_user, content_id):
             'message': f'Conteúdo {status} com sucesso',
             'is_active': content.is_active,
         })
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return server_error('alterar status do conteúdo')

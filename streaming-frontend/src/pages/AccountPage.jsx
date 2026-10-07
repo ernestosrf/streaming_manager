@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/context/AuthContext.jsx'
 
 function AccountPage() {
-  const { isAuthenticated, user, loading, makeAuthenticatedRequest } = useAuth()
+  const { isAuthenticated, user, loading, login, makeAuthenticatedRequest } = useAuth()
   const [form, setForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -46,6 +46,8 @@ function AccountPage() {
         setError(data.error || 'Não foi possível alterar a senha.')
         return
       }
+      // A troca de senha invalida o token anterior; o backend devolve um novo.
+      login(data.access_token, data.user)
       setSuccess(data.message)
       setForm({ current_password: '', new_password: '', confirm_password: '' })
     } catch (err) {

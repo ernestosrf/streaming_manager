@@ -30,6 +30,7 @@ def app():
         },
         'JWT_SECRET_KEY': 'test-jwt-secret',
         'SECRET_KEY': 'test-secret',
+        'RATELIMIT_ENABLED': False,
     })
     with application.app_context():
         db.create_all()
