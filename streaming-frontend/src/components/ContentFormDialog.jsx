@@ -55,6 +55,7 @@ function ContentFormDialog({
       return undefined
     }
 
+    const controller = new AbortController()
     const handle = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ q: formData.title.trim() })
@@ -64,16 +65,25 @@ function ContentFormDialog({
         if (formData.year) {
           params.set('year', String(formData.year))
         }
-        const response = await makeAuthenticatedRequest(`/api/content/suggestions?${params.toString()}`)
+        const response = await makeAuthenticatedRequest(
+          `/api/content/suggestions?${params.toString()}`,
+          { signal: controller.signal },
+        )
         if (response.ok) {
           setSuggestions(await response.json())
         }
       } catch (err) {
-        console.error('Erro ao buscar sugestões:', err)
+        if (err.name !== 'AbortError') {
+          console.error('Erro ao buscar sugestões:', err)
+        }
       }
     }, 300)
 
-    return () => clearTimeout(handle)
+    // Cancela o timer e também a requisição em andamento, evitando sugestões obsoletas.
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
   }, [formData.title, formData.type, formData.year, open, editingContent, makeAuthenticatedRequest])
 
   const applySuggestion = (item) => {

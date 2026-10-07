@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 from src.models.db import db
 from src.models.user import User, ROLE_USER, STATUS_PENDING, STATUS_ACTIVE, STATUS_INACTIVE, STATUS_REJECTED
@@ -48,7 +49,12 @@ def register():
     )
     user.set_password(password)
     db.session.add(user)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Outro cadastro com o mesmo username venceu a corrida entre a checagem e o INSERT.
+        db.session.rollback()
+        return jsonify({'error': 'Este username já está em uso.'}), 409
 
     return jsonify({
         'message': 'Cadastro realizado. Aguarde a aprovação do administrador para entrar.',

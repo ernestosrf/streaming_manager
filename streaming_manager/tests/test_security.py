@@ -109,3 +109,27 @@ def test_login_is_rate_limited():
         db.drop_all()
     assert statuses[:10] == [401] * 10
     assert statuses[10] == 429
+
+
+def test_toggle_accepts_explicit_target_state(client, app):
+    create_user('maria', 'senha1234')
+    headers = auth_header(client, 'maria', 'senha1234')
+    content_id = client.post('/api/content', json={'title': 'Matrix', 'type': 'movie'}, headers=headers).get_json()['id']
+
+    for _ in range(2):
+        response = client.patch(f'/api/content/{content_id}/toggle', json={'is_active': False}, headers=headers)
+        assert response.status_code == 200
+        assert response.get_json()['is_active'] is False
+
+    flipped = client.patch(f'/api/content/{content_id}/toggle', headers=headers)
+    assert flipped.get_json()['is_active'] is True
+    assert client.patch(f'/api/content/{content_id}/toggle', json={'is_active': 'no'}, headers=headers).status_code == 400
+
+
+def test_register_race_returns_conflict(client, app, monkeypatch):
+    from src.models.user import User
+    create_user('maria', 'senha1234')
+    # Simula a corrida: a checagem de existência não vê o usuário que já foi inserido.
+    monkeypatch.setattr(type(User.query), 'first', lambda self: None)
+    response = client.post('/api/auth/register', json={'username': 'maria', 'password': 'outrasenha'})
+    assert response.status_code == 409

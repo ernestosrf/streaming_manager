@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -14,7 +14,7 @@ import { useAuth } from '@/context/AuthContext.jsx'
 
 function WatchlistView({ ownerUsername, isHome = false }) {
   const navigate = useNavigate()
-  const { isAuthenticated, user, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
+  const { isAuthenticated, user, logout, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
   const [owner, setOwner] = useState(null)
   const [content, setContent] = useState([])
   const [streamings, setStreamings] = useState([])
@@ -29,9 +29,18 @@ function WatchlistView({ ownerUsername, isHome = false }) {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
+  const fetchControllerRef = useRef(null)
+
   const isOwner = Boolean(isAuthenticated && user && owner && user.username === owner.username)
 
   const fetchData = useCallback(async () => {
+    // Cancela a carga anterior para que uma resposta antiga não sobrescreva a atual
+    // (ex.: navegar de /alice para /bob ou alternar "Mostrar inativos" rapidamente).
+    fetchControllerRef.current?.abort()
+    const controller = new AbortController()
+    fetchControllerRef.current = controller
+    const { signal } = controller
+
     try {
       setLoading(true)
       setNotFound(false)
@@ -45,10 +54,16 @@ function WatchlistView({ ownerUsername, isHome = false }) {
 
       const headers = getAuthHeaders()
       const [watchlistRes, streamingsRes, statsRes] = await Promise.all([
-        fetch(watchlistUrl, { headers }),
-        fetch('/api/streamings'),
-        fetch(statsUrl, { headers }),
+        fetch(watchlistUrl, { headers, signal }),
+        fetch('/api/streamings', { signal }),
+        fetch(statsUrl, { headers, signal }),
       ])
+
+      if (watchlistRes.status === 401 || statsRes.status === 401) {
+        // Token expirado: encerra a sessão; a troca de token dispara nova carga sem autenticação.
+        logout()
+        return
+      }
 
       if (watchlistRes.status === 404) {
         setNotFound(true)
@@ -66,14 +81,19 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       setStreamings(streamingsData)
       setStats(statsData)
     } catch (error) {
-      console.error('Erro ao carregar dados:', error)
+      if (error.name !== 'AbortError') {
+        console.error('Erro ao carregar dados:', error)
+      }
     } finally {
-      setLoading(false)
+      if (fetchControllerRef.current === controller) {
+        setLoading(false)
+      }
     }
-  }, [getAuthHeaders, isHome, ownerUsername, showInactive])
+  }, [getAuthHeaders, isHome, logout, ownerUsername, showInactive])
 
   useEffect(() => {
     fetchData()
+    return () => fetchControllerRef.current?.abort()
   }, [fetchData, isAuthenticated])
 
   const filterContent = useCallback(() => {
@@ -115,12 +135,17 @@ function WatchlistView({ ownerUsername, isHome = false }) {
 
   const handleEdit = async (item) => {
     try {
-      const response = await fetch(`/api/content/${item.id}`, { headers: getAuthHeaders() })
-      const fullItem = await response.json()
-      setEditingContent(fullItem)
+      const response = await makeAuthenticatedRequest(`/api/content/${item.id}`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      setEditingContent(await response.json())
       setIsFormOpen(true)
     } catch (error) {
       console.error('Erro ao carregar dados para edição:', error)
+      if (error.message.includes('Sessão expirada')) {
+        navigate('/login')
+      }
     }
   }
 
@@ -138,9 +163,13 @@ function WatchlistView({ ownerUsername, isHome = false }) {
     }
   }
 
-  const handleToggleActive = async (id) => {
+  const handleToggleActive = async (item) => {
     try {
-      const response = await makeAuthenticatedRequest(`/api/content/${id}/toggle`, { method: 'PATCH' })
+      // Envia o estado desejado para que cliques repetidos sejam idempotentes.
+      const response = await makeAuthenticatedRequest(`/api/content/${item.id}/toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: !item.is_active }),
+      })
       if (response.ok) {
         fetchData()
       }
@@ -435,7 +464,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
                     <Button
                       variant={item.is_active ? 'secondary' : 'default'}
                       size="sm"
-                      onClick={() => handleToggleActive(item.id)}
+                      onClick={() => handleToggleActive(item)}
                       className="flex-1"
                     >
                       {item.is_active ? (

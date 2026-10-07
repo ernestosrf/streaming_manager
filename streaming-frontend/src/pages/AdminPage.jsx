@@ -28,19 +28,32 @@ function AdminPage() {
   const [resetUser, setResetUser] = useState(null)
   const [newPassword, setNewPassword] = useState('')
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (signal) => {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (status !== 'all') params.set('status', status)
-    const response = await makeAuthenticatedRequest(`/api/admin/users?${params.toString()}`)
+    const response = await makeAuthenticatedRequest(`/api/admin/users?${params.toString()}`, { signal })
     if (response.ok) {
       setUsers(await response.json())
     }
   }, [makeAuthenticatedRequest, search, status])
 
   useEffect(() => {
-    if (isAdmin) {
-      loadUsers().catch((err) => setError(err.message))
+    if (!isAdmin) {
+      return undefined
+    }
+    // Debounce da busca e cancelamento da requisição anterior para evitar respostas fora de ordem.
+    const controller = new AbortController()
+    const handle = setTimeout(() => {
+      loadUsers(controller.signal).catch((err) => {
+        if (err.name !== 'AbortError') {
+          setError(err.message)
+        }
+      })
+    }, 300)
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
     }
   }, [isAdmin, loadUsers])
 
@@ -59,29 +72,37 @@ function AdminPage() {
   const runAction = async (url, options = {}) => {
     setError('')
     setMessage('')
-    const response = await makeAuthenticatedRequest(url, options)
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      setError(data.error || 'Não foi possível concluir a ação.')
-      return
+    try {
+      const response = await makeAuthenticatedRequest(url, options)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data.error || 'Não foi possível concluir a ação.')
+        return false
+      }
+      if (data.access_token) {
+        // Redefinir a própria senha invalida o token atual.
+        login(data.access_token, user)
+      }
+      setMessage(data.message || 'Ação concluída.')
+      await loadUsers()
+      return true
+    } catch (err) {
+      setError(err.message || 'Erro de conexão. Tente novamente.')
+      return false
     }
-    if (data.access_token) {
-      // Redefinir a própria senha invalida o token atual.
-      login(data.access_token, user)
-    }
-    setMessage(data.message || 'Ação concluída.')
-    await loadUsers()
   }
 
   const handleReset = async (event) => {
     event.preventDefault()
     if (!resetUser) return
-    await runAction(`/api/admin/users/${resetUser.id}/reset-password`, {
+    const ok = await runAction(`/api/admin/users/${resetUser.id}/reset-password`, {
       method: 'POST',
       body: JSON.stringify({ new_password: newPassword }),
     })
-    setResetUser(null)
-    setNewPassword('')
+    if (ok) {
+      setResetUser(null)
+      setNewPassword('')
+    }
   }
 
   const watchlistPath = (item) => (
@@ -184,7 +205,7 @@ function AdminPage() {
                           Ativar
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => setResetUser(item)}>
+                      <Button size="sm" variant="outline" onClick={() => { setError(''); setResetUser(item) }}>
                         Redefinir senha
                       </Button>
                       {item.id !== user.id && item.role !== 'admin' && (
@@ -217,7 +238,7 @@ function AdminPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(resetUser)} onOpenChange={(open) => { if (!open) { setResetUser(null); setNewPassword('') } }}>
+      <Dialog open={Boolean(resetUser)} onOpenChange={(open) => { if (!open) { setResetUser(null); setNewPassword(''); setError('') } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Redefinir senha {resetUser ? `de @${resetUser.username}` : ''}</DialogTitle>
@@ -226,6 +247,7 @@ function AdminPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleReset} className="space-y-4">
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="space-y-2">
               <Label htmlFor="new-password">Nova senha</Label>
               <Input

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, abort
-from sqlalchemy import and_
+from sqlalchemy import and_, not_
 from src.models.content import Content, StreamingPlatform, ContentStreaming
 from src.models.db import db
 from src.models.user import User, STATUS_ACTIVE
@@ -319,9 +319,21 @@ def toggle_content_active(current_user, content_id):
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
+    data = request.get_json(silent=True) or {}
+    target = data.get('is_active')
+    if target is not None and not isinstance(target, bool):
+        return jsonify({'error': 'is_active deve ser booleano.'}), 400
+
     try:
-        content.is_active = not content.is_active
+        # Com is_active explícito a operação é idempotente; sem ele, a inversão é feita
+        # atomicamente no banco para que cliques concorrentes não se anulem.
+        new_value = target if target is not None else not_(Content.is_active)
+        Content.query.filter_by(id=content.id).update(
+            {Content.is_active: new_value},
+            synchronize_session=False,
+        )
         db.session.commit()
+        db.session.refresh(content)
         status = 'ativado' if content.is_active else 'desativado'
         return jsonify({
             'message': f'Conteúdo {status} com sucesso',

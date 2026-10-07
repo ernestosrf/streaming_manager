@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, abort
+from sqlalchemy.exc import IntegrityError
 from src.models.content import StreamingPlatform, db
 from src.utils.auth import admin_required
 from src.utils.responses import server_error
@@ -50,6 +51,9 @@ def create_streaming(current_user):
         db.session.add(streaming)
         db.session.commit()
         return jsonify(streaming.to_dict()), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Streaming já existe'}), 400
     except Exception:
         db.session.rollback()
         return server_error('criar streaming')
@@ -73,6 +77,9 @@ def update_streaming(current_user, streaming_id):
 
         db.session.commit()
         return jsonify(streaming.to_dict())
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Streaming já existe'}), 400
     except Exception:
         db.session.rollback()
         return server_error('atualizar streaming')
