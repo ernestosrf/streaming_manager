@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, abort
-from sqlalchemy import and_, not_
+from sqlalchemy import and_, func, not_
+from sqlalchemy.orm import selectinload
 from src.models.content import Content, StreamingPlatform, ContentStreaming
 from src.models.db import db
 from src.models.user import User, STATUS_ACTIVE
@@ -51,8 +52,15 @@ def _can_see_inactive(owner):
     return viewer is not None and viewer.id == owner.id
 
 
+def _with_streamings(query):
+    """Carrega streamings e plataformas em lote, evitando N+1 no to_dict()."""
+    return query.options(
+        selectinload(Content.streamings).selectinload(ContentStreaming.streaming_platform)
+    )
+
+
 def _watchlist_query(owner, show_inactive_requested):
-    query = Content.query.filter(Content.owner_id == owner.id)
+    query = _with_streamings(Content.query.filter(Content.owner_id == owner.id))
     if not (show_inactive_requested and _can_see_inactive(owner)):
         query = query.filter(Content.is_active == True)  # noqa: E712
     return _apply_content_filters(query)
@@ -68,36 +76,38 @@ def _watchlist_payload(owner):
 
 
 def _stats_for_owner(owner, include_inactive):
-    base = Content.query.filter_by(owner_id=owner.id)
-    active = base.filter_by(is_active=True)
-    movies = active.filter_by(type='movie').count()
-    series = active.filter_by(type='series').count()
-    animes = active.filter_by(type='anime').count()
-    total_inactive = base.filter_by(is_active=False).count() if include_inactive else 0
+    active_by_type = {}
+    total_inactive = 0
+    rows = db.session.query(Content.is_active, Content.type, func.count(Content.id)).filter(
+        Content.owner_id == owner.id,
+    ).group_by(Content.is_active, Content.type).all()
+    for is_active, content_type, count in rows:
+        if is_active:
+            active_by_type[content_type] = count
+        else:
+            total_inactive += count
 
-    streaming_stats = []
-    streamings = StreamingPlatform.query.filter_by(active=True).all()
-    for streaming in streamings:
-        count = db.session.query(ContentStreaming).join(Content).filter(
-            ContentStreaming.streaming_id == streaming.id,
+    counts_by_streaming = dict(
+        db.session.query(ContentStreaming.streaming_id, func.count()).join(Content).filter(
             ContentStreaming.available == True,  # noqa: E712
             Content.is_active == True,  # noqa: E712
             Content.owner_id == owner.id,
-        ).count()
-        streaming_stats.append({
-            'streaming': streaming.to_dict(),
-            'count': count,
-        })
+        ).group_by(ContentStreaming.streaming_id).all()
+    )
+    streamings = StreamingPlatform.query.filter_by(active=True).all()
 
     return {
-        'total_content': active.count(),
-        'total_inactive': total_inactive,
+        'total_content': sum(active_by_type.values()),
+        'total_inactive': total_inactive if include_inactive else 0,
         'by_type': {
-            'movies': movies,
-            'series': series,
-            'animes': animes,
+            'movies': active_by_type.get('movie', 0),
+            'series': active_by_type.get('series', 0),
+            'animes': active_by_type.get('anime', 0),
         },
-        'by_streaming': streaming_stats,
+        'by_streaming': [
+            {'streaming': streaming.to_dict(), 'count': counts_by_streaming.get(streaming.id, 0)}
+            for streaming in streamings
+        ],
     }
 
 
@@ -204,7 +214,7 @@ def suggest_content(current_user):
     content_type = request.args.get('type')
     year = _parse_year(request.args.get('year'))
 
-    query = Content.query.join(User).filter(
+    query = _with_streamings(Content.query.join(User)).filter(
         User.status == STATUS_ACTIVE,
         Content.is_active == True,  # noqa: E712
         Content.title.ilike(f'%{query_text}%'),

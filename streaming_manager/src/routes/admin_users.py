@@ -15,6 +15,9 @@ from src.utils.validators import validate_password
 
 admin_users_bp = Blueprint('admin_users', __name__)
 
+DEFAULT_PER_PAGE = 50
+MAX_PER_PAGE = 200
+
 
 def _user_or_404(user_id):
     user = db.session.get(User, user_id)
@@ -37,8 +40,22 @@ def list_users(current_user):
             return jsonify({'error': 'Status inválido.'}), 400
         query = query.filter(User.status == status)
 
-    users = query.order_by(User.created_at.desc()).all()
-    return jsonify([user.to_dict(include_private=True) for user in users])
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', DEFAULT_PER_PAGE, type=int)
+    if page < 1 or per_page < 1:
+        return jsonify({'error': 'Paginação inválida.'}), 400
+    per_page = min(per_page, MAX_PER_PAGE)
+
+    total = query.count()
+    users = (
+        query.order_by(User.created_at.desc(), User.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    response = jsonify([user.to_dict(include_private=True) for user in users])
+    response.headers['X-Total-Count'] = str(total)
+    return response
 
 
 @admin_users_bp.route('/users/<int:user_id>/approve', methods=['POST'])

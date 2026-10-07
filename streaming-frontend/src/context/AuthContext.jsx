@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 /* eslint-disable react-refresh/only-export-components */
 
@@ -13,7 +13,6 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_user')
     setIsAuthenticated(false)
     setToken(null)
     setUser(null)
@@ -21,9 +20,6 @@ export function AuthProvider({ children }) {
 
   const applySession = useCallback((newToken, userData) => {
     localStorage.setItem('auth_token', newToken)
-    if (userData) {
-      localStorage.setItem('auth_user', JSON.stringify(userData))
-    }
     setIsAuthenticated(true)
     setToken(newToken)
     setUser(userData || null)
@@ -32,26 +28,25 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const metaRes = await fetch('/api/meta')
+        // Remove a chave legada que guardava o usuário (nunca era lida).
+        localStorage.removeItem('auth_user')
+        const savedToken = localStorage.getItem('auth_token')
+        const [metaRes, verifyRes] = await Promise.all([
+          fetch('/api/meta'),
+          savedToken
+            ? fetch('/api/auth/verify', { headers: { Authorization: `Bearer ${savedToken}` } })
+            : Promise.resolve(null),
+        ])
+
         if (metaRes.ok) {
           setMeta(await metaRes.json())
         }
 
-        const savedToken = localStorage.getItem('auth_token')
-        if (!savedToken) {
-          return
-        }
-
-        const response = await fetch('/api/auth/verify', {
-          headers: { Authorization: `Bearer ${savedToken}` },
-        })
-
-        if (response.ok) {
-          const data = await response.json()
+        if (verifyRes?.ok) {
+          const data = await verifyRes.json()
           applySession(savedToken, data.user)
-        } else {
+        } else if (verifyRes) {
           localStorage.removeItem('auth_token')
-          localStorage.removeItem('auth_user')
         }
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error)
@@ -63,9 +58,9 @@ export function AuthProvider({ children }) {
     bootstrap()
   }, [applySession])
 
-  const login = (newToken, userData = null) => {
+  const login = useCallback((newToken, userData = null) => {
     applySession(newToken, userData)
-  }
+  }, [applySession])
 
   const getAuthHeaders = useCallback(() => {
     return token ? { Authorization: `Bearer ${token}` } : {}
@@ -91,7 +86,7 @@ export function AuthProvider({ children }) {
     return response
   }, [getAuthHeaders, logout])
 
-  const value = {
+  const value = useMemo(() => ({
     isAuthenticated,
     token,
     user,
@@ -102,7 +97,7 @@ export function AuthProvider({ children }) {
     logout,
     getAuthHeaders,
     makeAuthenticatedRequest,
-  }
+  }), [isAuthenticated, token, user, loading, meta, login, logout, getAuthHeaders, makeAuthenticatedRequest])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

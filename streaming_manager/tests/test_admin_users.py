@@ -98,3 +98,21 @@ def test_delete_user_removes_contents(client, app):
     assert deleted.status_code == 200
     assert db.session.get(User, maria.id) is None
     assert db.session.get(Content, content.id) is None
+
+
+def test_admin_user_list_is_paginated(client, app):
+    create_admin()
+    for index in range(5):
+        create_user(f'user-{index}', 'senha1234')
+    headers = auth_header(client, 'admin', 'admin-password')
+
+    first = client.get('/api/admin/users?per_page=2&page=1', headers=headers)
+    second = client.get('/api/admin/users?per_page=2&page=2', headers=headers)
+    last = client.get('/api/admin/users?per_page=2&page=3', headers=headers)
+
+    assert first.headers['X-Total-Count'] == '6'
+    pages = [first.get_json(), second.get_json(), last.get_json()]
+    assert [len(page) for page in pages] == [2, 2, 2]
+    seen = [user['username'] for page in pages for user in page]
+    assert len(set(seen)) == 6
+    assert client.get('/api/admin/users?page=0', headers=headers).status_code == 400

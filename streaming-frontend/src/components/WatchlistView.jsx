@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -14,11 +14,10 @@ import { useAuth } from '@/context/AuthContext.jsx'
 
 function WatchlistView({ ownerUsername, isHome = false }) {
   const navigate = useNavigate()
-  const { isAuthenticated, user, logout, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
+  const { isAuthenticated, user, meta, logout, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
   const [owner, setOwner] = useState(null)
   const [content, setContent] = useState([])
   const [streamings, setStreamings] = useState([])
-  const [filteredContent, setFilteredContent] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedType, setSelectedType] = useState('all')
   const [selectedStreamings, setSelectedStreamings] = useState([])
@@ -53,9 +52,8 @@ function WatchlistView({ ownerUsername, isHome = false }) {
         : `/api/watchlists/${ownerPath}/stats`
 
       const headers = getAuthHeaders()
-      const [watchlistRes, streamingsRes, statsRes] = await Promise.all([
+      const [watchlistRes, statsRes] = await Promise.all([
         fetch(watchlistUrl, { headers, signal }),
-        fetch('/api/streamings', { signal }),
         fetch(statsUrl, { headers, signal }),
       ])
 
@@ -73,12 +71,10 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       }
 
       const watchlistData = await watchlistRes.json()
-      const streamingsData = await streamingsRes.json()
       const statsData = statsRes.ok ? await statsRes.json() : null
 
       setOwner(watchlistData.owner)
       setContent(watchlistData.contents || [])
-      setStreamings(streamingsData)
       setStats(statsData)
     } catch (error) {
       if (error.name !== 'AbortError') {
@@ -94,9 +90,23 @@ function WatchlistView({ ownerUsername, isHome = false }) {
   useEffect(() => {
     fetchData()
     return () => fetchControllerRef.current?.abort()
-  }, [fetchData, isAuthenticated])
+  }, [fetchData])
 
-  const filterContent = useCallback(() => {
+  // As plataformas são globais: carregadas uma vez, não a cada recarga da watchlist.
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/streamings', { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : []))
+      .then(setStreamings)
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('Erro ao carregar streamings:', error)
+        }
+      })
+    return () => controller.abort()
+  }, [])
+
+  const filteredContent = useMemo(() => {
     let filtered = content
 
     if (searchTerm) {
@@ -117,12 +127,8 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       )
     }
 
-    setFilteredContent(filtered)
+    return filtered
   }, [content, searchTerm, selectedType, selectedStreamings])
-
-  useEffect(() => {
-    filterContent()
-  }, [filterContent])
 
   const handleAdd = () => {
     if (!isAuthenticated) {
@@ -199,7 +205,10 @@ function WatchlistView({ ownerUsername, isHome = false }) {
     }
   }
 
-  if (loading) {
+  // Spinner de página inteira só quando a watchlist exibida ainda não é a solicitada;
+  // recargas da mesma lista (salvar, alternar inativos) mantêm o conteúdo na tela.
+  const expectedOwner = isHome ? meta?.admin_username : ownerUsername
+  if (loading && (!owner || owner.username !== expectedOwner)) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-center">

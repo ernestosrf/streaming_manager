@@ -18,6 +18,8 @@ const STATUS_LABELS = {
   rejected: 'Rejeitado',
 }
 
+const USERS_PER_PAGE = 50
+
 function AdminPage() {
   const { isAuthenticated, isAdmin, loading, login, makeAuthenticatedRequest, user, meta } = useAuth()
   const [users, setUsers] = useState([])
@@ -27,16 +29,21 @@ function AdminPage() {
   const [message, setMessage] = useState('')
   const [resetUser, setResetUser] = useState(null)
   const [newPassword, setNewPassword] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalUsers, setTotalUsers] = useState(0)
 
   const loadUsers = useCallback(async (signal) => {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (status !== 'all') params.set('status', status)
+    params.set('page', String(page))
+    params.set('per_page', String(USERS_PER_PAGE))
     const response = await makeAuthenticatedRequest(`/api/admin/users?${params.toString()}`, { signal })
     if (response.ok) {
       setUsers(await response.json())
+      setTotalUsers(Number(response.headers.get('X-Total-Count')) || 0)
     }
-  }, [makeAuthenticatedRequest, search, status])
+  }, [makeAuthenticatedRequest, page, search, status])
 
   useEffect(() => {
     if (!isAdmin) {
@@ -128,13 +135,13 @@ function AdminPage() {
               <Input
                 id="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value.toLowerCase())}
+                onChange={(e) => { setSearch(e.target.value.toLowerCase()); setPage(1) }}
                 placeholder="ex: maria"
               />
             </div>
             <div>
               <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
+              <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1) }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -235,6 +242,27 @@ function AdminPage() {
               ))}
             </TableBody>
           </Table>
+
+          {totalUsers > USERS_PER_PAGE && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                Página {page} de {Math.ceil(totalUsers / USERS_PER_PAGE)} · {totalUsers} usuários
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
+                  Anterior
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page * USERS_PER_PAGE >= totalUsers}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

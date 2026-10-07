@@ -86,7 +86,7 @@ def create_app(config_overrides=None):
     jwt.init_app(app)
     limiter.init_app(app)
     migrate.init_app(app, db, directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'migrations'), render_as_batch=True)
-    CORS(app, origins=_cors_origins())
+    CORS(app, origins=_cors_origins(), expose_headers=['X-Total-Count'])
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(content_bp, url_prefix='/api')
