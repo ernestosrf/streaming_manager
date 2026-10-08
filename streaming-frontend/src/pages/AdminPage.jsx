@@ -18,7 +18,7 @@ import { ROLE_ADMIN, USER_STATUS, USER_STATUS_LABELS } from '@/lib/constants.js'
 const USERS_PER_PAGE = 50
 
 function AdminPage() {
-  const { isAuthenticated, isAdmin, loading, login, makeAuthenticatedRequest, user, meta } = useAuth()
+  const { isAuthenticated, isAdmin, loading, login, makeAuthenticatedRequest, user, meta, pendingCount, refreshPendingCount } = useAuth()
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
@@ -88,7 +88,7 @@ function AdminPage() {
         login(data.access_token, user)
       }
       setMessage(data.message || 'Ação concluída.')
-      await loadUsers()
+      await Promise.all([loadUsers(), refreshPendingCount()])
       return true
     } catch (err) {
       setError(err.message || 'Erro de conexão. Tente novamente.')
@@ -124,7 +124,14 @@ function AdminPage() {
 
       <Tabs defaultValue="users">
         <TabsList>
-          <TabsTrigger value="users">Usuários</TabsTrigger>
+          <TabsTrigger value="users">
+            Usuários
+            {pendingCount > 0 && (
+              <Badge variant="destructive" className="ml-2">
+                {pendingCount > 99 ? '99+' : pendingCount}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="platforms">Plataformas</TabsTrigger>
         </TabsList>
 

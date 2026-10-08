@@ -5,6 +5,7 @@ import { SessionExpiredError } from '@/lib/errors.js'
 /* eslint-disable react-refresh/only-export-components */
 
 const AuthContext = createContext(null)
+const PENDING_REFRESH_MS = 60_000
 
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -12,12 +13,14 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [meta, setMeta] = useState({ admin_username: null })
+  const [pendingCount, setPendingCount] = useState(0)
 
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
     setIsAuthenticated(false)
     setToken(null)
     setUser(null)
+    setPendingCount(0)
   }, [])
 
   const applySession = useCallback((newToken, userData) => {
@@ -68,6 +71,38 @@ export function AuthProvider({ children }) {
     return token ? { Authorization: `Bearer ${token}` } : {}
   }, [token])
 
+  const refreshPendingCount = useCallback(async () => {
+    if (!token || user?.role !== ROLE_ADMIN) {
+      setPendingCount(0)
+      return
+    }
+    try {
+      const response = await fetch('/api/admin/users?status=pending&page=1&per_page=1', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) {
+        setPendingCount(0)
+        return
+      }
+      setPendingCount(Number(response.headers.get('X-Total-Count')) || 0)
+    } catch {
+      setPendingCount(0)
+    }
+  }, [token, user])
+
+  useEffect(() => {
+    refreshPendingCount()
+    if (!token || user?.role !== ROLE_ADMIN) return undefined
+
+    // Novos cadastros chegam de outros clientes; mantém o contador atualizado.
+    const interval = setInterval(refreshPendingCount, PENDING_REFRESH_MS)
+    window.addEventListener('focus', refreshPendingCount)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', refreshPendingCount)
+    }
+  }, [refreshPendingCount, token, user])
+
   const makeAuthenticatedRequest = useCallback(async (url, options = {}) => {
     const headers = {
       'Content-Type': 'application/json',
@@ -95,11 +130,13 @@ export function AuthProvider({ children }) {
     loading,
     meta,
     isAdmin: user?.role === ROLE_ADMIN,
+    pendingCount,
     login,
     logout,
     getAuthHeaders,
     makeAuthenticatedRequest,
-  }), [isAuthenticated, token, user, loading, meta, login, logout, getAuthHeaders, makeAuthenticatedRequest])
+    refreshPendingCount,
+  }), [isAuthenticated, token, user, loading, meta, pendingCount, login, logout, getAuthHeaders, makeAuthenticatedRequest, refreshPendingCount])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

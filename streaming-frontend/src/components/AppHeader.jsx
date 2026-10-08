@@ -1,10 +1,12 @@
 import { Link, NavLink } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { Film, LogOut, Shield, UserRound } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.jsx'
 
 function AppHeader() {
-  const { isAuthenticated, user, isAdmin, logout } = useAuth()
+  const { isAuthenticated, user, isAdmin, logout, pendingCount } = useAuth()
+  const pendingLabel = pendingCount === 1 ? '1 cadastro pendente' : `${pendingCount} cadastros pendentes`
 
   return (
     <header className="border-b bg-card">
@@ -40,9 +42,17 @@ function AppHeader() {
                 </Button>
                 {isAdmin && (
                   <Button variant="outline" asChild>
-                    <Link to="/admin">
+                    <Link
+                      to="/admin"
+                      aria-label={pendingCount > 0 ? `Painel, ${pendingLabel}` : 'Painel'}
+                    >
                       <Shield className="w-4 h-4 mr-1" />
                       Painel
+                      {pendingCount > 0 && (
+                        <Badge variant="destructive" className="ml-2">
+                          {pendingCount > 99 ? '99+' : pendingCount}
+                        </Badge>
+                      )}
                     </Link>
                   </Button>
                 )}
