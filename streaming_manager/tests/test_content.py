@@ -142,6 +142,75 @@ def test_suggestions_ignore_inactive_content_and_accounts(client, app):
     assert 'Pendente Filme' not in titles
 
 
+def test_inactive_platform_is_hidden_from_public_lists(client, app):
+    admin = create_admin()
+    visible = add_platform('Netflix')
+    hidden = add_platform('Oculta')
+    hidden.active = False
+    db.session.commit()
+    add_content(admin, title='Filme Admin', streamings=[visible, hidden])
+
+    public = client.get('/api/streamings')
+    public_names = {item['name'] for item in public.get_json()}
+    assert 'Netflix' in public_names
+    assert 'Oculta' not in public_names
+
+    including_inactive = client.get('/api/streamings?active_only=false')
+    all_names = {item['name'] for item in including_inactive.get_json()}
+    assert 'Oculta' in all_names
+
+    watchlist = client.get('/api/watchlists')
+    streamings = watchlist.get_json()['contents'][0]['streamings']
+    assert [item['name'] for item in streamings] == ['Netflix']
+
+
+def test_editing_content_keeps_links_to_inactive_platforms(client, app):
+    admin = create_admin()
+    visible = add_platform('Netflix')
+    hidden = add_platform('Oculta')
+    content = add_content(admin, title='Filme Admin', streamings=[visible, hidden])
+    hidden.active = False
+    db.session.commit()
+    headers = auth_header(client, 'admin', 'admin-password')
+
+    response = client.put(
+        f'/api/content/{content.id}',
+        json={'year': 2000, 'streaming_ids': [visible.id]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert [item['name'] for item in response.get_json()['streamings']] == ['Netflix']
+
+    hidden.active = True
+    db.session.commit()
+    names = {item['name'] for item in client.get(f'/api/content/{content.id}').get_json()['streamings']}
+    assert names == {'Netflix', 'Oculta'}
+
+
+def test_platform_name_is_trimmed_and_validated(client, app):
+    create_admin()
+    headers = auth_header(client, 'admin', 'admin-password')
+
+    for name in ('', '   ', None, 'x' * 101):
+        response = client.post('/api/streamings', json={'name': name}, headers=headers)
+        assert response.status_code == 400
+
+    created = client.post('/api/streamings', json={'name': '  Foo  '}, headers=headers)
+    assert created.status_code == 201
+    assert created.get_json()['name'] == 'Foo'
+    platform_id = created.get_json()['id']
+
+    duplicate = client.post('/api/streamings', json={'name': ' Foo'}, headers=headers)
+    assert duplicate.status_code == 400
+
+    blank = client.put(f'/api/streamings/{platform_id}', json={'name': '  '}, headers=headers)
+    assert blank.status_code == 400
+
+    renamed = client.put(f'/api/streamings/{platform_id}', json={'name': ' Bar '}, headers=headers)
+    assert renamed.status_code == 200
+    assert renamed.get_json()['name'] == 'Bar'
+
+
 def test_only_admin_manages_platforms(client, app):
     create_admin()
     create_user('maria', 'senha1234')

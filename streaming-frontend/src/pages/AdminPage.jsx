@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.jsx'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog.jsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog.jsx'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
+import PlatformsPanel from '@/components/PlatformsPanel.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { ROLE_ADMIN, USER_STATUS, USER_STATUS_LABELS } from '@/lib/constants.js'
 
@@ -112,12 +114,26 @@ function AdminPage() {
   )
 
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="container mx-auto px-4 py-6 space-y-4">
+      <div>
+        <h2 className="text-2xl font-bold">Painel administrativo</h2>
+        <p className="text-muted-foreground">
+          Gerencie cadastros, senhas e as plataformas usadas em todas as watchlists.
+        </p>
+      </div>
+
+      <Tabs defaultValue="users">
+        <TabsList>
+          <TabsTrigger value="users">Usuários</TabsTrigger>
+          <TabsTrigger value="platforms">Plataformas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users">
       <Card>
         <CardHeader>
-          <CardTitle>Painel administrativo</CardTitle>
+          <CardTitle>Usuários</CardTitle>
           <CardDescription>
-            Gerencie cadastros, status das contas e senhas. Plataformas de streaming continuam globais.
+            Aprove cadastros, altere o status das contas e redefina senhas.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -259,6 +275,12 @@ function AdminPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="platforms">
+          <PlatformsPanel />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={Boolean(resetUser)} onOpenChange={(open) => { if (!open) { setResetUser(null); setNewPassword(''); setError('') } }}>
         <DialogContent>

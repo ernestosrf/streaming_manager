@@ -119,8 +119,15 @@ def _public_owner_or_404(username):
 
 
 def _replace_streamings(content, streaming_ids):
+    # Plataformas inativas não aparecem no to_dict(), então o cliente não as reenvia;
+    # preservamos esses vínculos para que reativar a plataforma os restaure.
+    inactive_ids = {
+        streaming_id for (streaming_id,) in db.session.query(ContentStreaming.streaming_id)
+        .join(StreamingPlatform, StreamingPlatform.id == ContentStreaming.streaming_id)
+        .filter(ContentStreaming.content_id == content.id, StreamingPlatform.active.is_(False))
+    }
     ContentStreaming.query.filter_by(content_id=content.id).delete()
-    for streaming_id in streaming_ids:
+    for streaming_id in set(streaming_ids) | inactive_ids:
         db.session.add(ContentStreaming(
             content_id=content.id,
             streaming_id=streaming_id,

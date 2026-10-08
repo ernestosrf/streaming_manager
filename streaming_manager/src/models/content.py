@@ -39,7 +39,7 @@ class Content(db.Model):
             'streamings': [
                 cs.streaming_platform.to_dict()
                 for cs in self.streamings
-                if cs.available and cs.streaming_platform
+                if cs.available and cs.streaming_platform and cs.streaming_platform.active
             ],
         }
         if include_owner and self.owner:

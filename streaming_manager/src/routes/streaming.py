@@ -6,6 +6,18 @@ from src.utils.responses import server_error
 
 streaming_bp = Blueprint('streaming', __name__)
 
+MAX_NAME_LENGTH = 100
+
+
+def _clean_name(value):
+    """Retorna (nome, erro) com o nome sem espaços nas pontas."""
+    name = value.strip() if isinstance(value, str) else ''
+    if not name:
+        return None, 'Nome é obrigatório'
+    if len(name) > MAX_NAME_LENGTH:
+        return None, f'Nome deve ter no máximo {MAX_NAME_LENGTH} caracteres'
+    return name, None
+
 
 @streaming_bp.route('/streamings', methods=['GET'])
 def get_streamings():
@@ -24,16 +36,17 @@ def get_streamings():
 def create_streaming(current_user):
     data = request.get_json(silent=True) or {}
 
-    if not data.get('name'):
-        return jsonify({'error': 'Nome é obrigatório'}), 400
+    name, error = _clean_name(data.get('name'))
+    if error:
+        return jsonify({'error': error}), 400
 
-    existing = StreamingPlatform.query.filter_by(name=data['name']).first()
+    existing = StreamingPlatform.query.filter_by(name=name).first()
     if existing:
         return jsonify({'error': 'Streaming já existe'}), 400
 
     try:
         streaming = StreamingPlatform(
-            name=data['name'],
+            name=name,
             logo_url=data.get('logo_url'),
             color=data.get('color'),
             active=data.get('active', True),
@@ -55,9 +68,14 @@ def update_streaming(current_user, streaming_id):
     streaming = db.get_or_404(StreamingPlatform, streaming_id)
     data = request.get_json(silent=True) or {}
 
+    if 'name' in data:
+        name, error = _clean_name(data['name'])
+        if error:
+            return jsonify({'error': error}), 400
+
     try:
         if 'name' in data:
-            streaming.name = data['name']
+            streaming.name = name
         if 'logo_url' in data:
             streaming.logo_url = data['logo_url']
         if 'color' in data:
