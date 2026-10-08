@@ -57,7 +57,7 @@ function AppHeader() {
                   </Button>
                 )}
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>@{user.username}</span>
+                  <span>{isAdmin ? 'Administrador' : `@${user.username}`}</span>
                   <Button variant="outline" size="sm" onClick={logout}>
                     <LogOut className="w-4 h-4 mr-1" />
                     Sair

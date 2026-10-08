@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
 import PlatformsPanel from '@/components/PlatformsPanel.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
-import { ROLE_ADMIN, USER_STATUS, USER_STATUS_LABELS } from '@/lib/constants.js'
+import { ROLE_ADMIN, USER_STATUS, USER_STATUS_LABELS, accountLabel } from '@/lib/constants.js'
 
 
 const USERS_PER_PAGE = 50
@@ -186,7 +186,7 @@ function AdminPage() {
             <TableBody>
               {users.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell>@{item.username}</TableCell>
+                  <TableCell>{accountLabel(item)}</TableCell>
                   <TableCell>{item.role}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === USER_STATUS.ACTIVE ? 'default' : 'secondary'}>
@@ -239,7 +239,7 @@ function AdminPage() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir @{item.username}?</AlertDialogTitle>
+                              <AlertDialogTitle>Excluir {accountLabel(item)}?</AlertDialogTitle>
                               <AlertDialogDescription>
                                 Esta ação remove definitivamente a conta e todos os seus conteúdos. Não pode ser desfeita.
                               </AlertDialogDescription>
@@ -292,7 +292,9 @@ function AdminPage() {
       <Dialog open={Boolean(resetUser)} onOpenChange={(open) => { if (!open) { setResetUser(null); setNewPassword(''); setError('') } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Redefinir senha {resetUser ? `de @${resetUser.username}` : ''}</DialogTitle>
+            <DialogTitle>
+              Redefinir senha {resetUser ? (resetUser.role === ROLE_ADMIN ? 'do Administrador' : `de @${resetUser.username}`) : ''}
+            </DialogTitle>
             <DialogDescription>
               Defina uma nova senha sem precisar da senha atual.
             </DialogDescription>

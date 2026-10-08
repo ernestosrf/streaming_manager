@@ -1,4 +1,10 @@
 export const ROLE_ADMIN = 'admin'
+export const ADMIN_LABEL = 'Administrador'
+
+export function accountLabel(account) {
+  if (account?.role === ROLE_ADMIN) return ADMIN_LABEL
+  return account?.username ? `@${account.username}` : ''
+}
 
 export const USER_STATUS = {
   PENDING: 'pending',

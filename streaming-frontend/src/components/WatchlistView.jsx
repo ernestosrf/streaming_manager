@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Search, Plus, Film, Tv, Zap, Filter, BarChart3, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
 import ContentFormDialog from '@/components/ContentFormDialog.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
-import { getContentTypeLabel } from '@/lib/constants.js'
+import { ROLE_ADMIN, getContentTypeLabel } from '@/lib/constants.js'
 import { SessionExpiredError } from '@/lib/errors.js'
 
 function WatchlistView({ ownerUsername, isHome = false }) {
@@ -228,14 +228,14 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">
-            {isHome
-              ? `Watchlist de @${owner?.username || meta?.admin_username}`
+            {isHome || owner?.role === ROLE_ADMIN
+              ? 'Watchlist do Administrador'
               : `Watchlist de @${owner?.username || ownerUsername}`}
           </h2>
           <p className="text-muted-foreground">
             {isOwner && isHome && 'Lista pública principal. Você pode gerenciar os títulos.'}
             {isOwner && !isHome && 'Você pode gerenciar os títulos desta lista.'}
-            {!isOwner && isHome && 'Lista pública do administrador.'}
+            {!isOwner && isHome && 'Lista pública do Administrador.'}
             {!isOwner && !isHome && 'Catálogo público para visualização.'}
           </p>
         </div>
@@ -251,7 +251,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
         <Card className="mb-6">
           <CardContent className="py-4">
             <p className="text-sm md:text-base">
-              Esta é a lista pública de @{owner?.username || meta?.admin_username}. Entre ou crie uma conta para montar a sua.
+              Esta é a lista pública do Administrador. Entre ou crie uma conta para montar a sua.
             </p>
           </CardContent>
         </Card>
@@ -261,7 +261,7 @@ function WatchlistView({ ownerUsername, isHome = false }) {
         <Card className="mb-6">
           <CardContent className="py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <p className="text-sm md:text-base">
-              Você está vendo a lista pública de @{owner.username}. A sua lista é outra.
+              Você está vendo a lista pública {owner.role === ROLE_ADMIN ? 'do Administrador' : `de @${owner.username}`}. A sua lista é outra.
             </p>
             <Button asChild>
               <Link to={isAdmin ? '/' : `/${user.username}`}>Minha watchlist</Link>

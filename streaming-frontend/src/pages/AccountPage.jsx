@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label.jsx'
 import { Alert, AlertDescription } from '@/components/ui/alert.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { accountLabel } from '@/lib/constants.js'
 
 function AccountPage() {
   const { isAuthenticated, user, loading, login, makeAuthenticatedRequest } = useAuth()
@@ -63,7 +64,7 @@ function AccountPage() {
         <CardHeader>
           <CardTitle>Minha conta</CardTitle>
           <CardDescription>
-            Logado como <strong>@{user.username}</strong>. O username é imutável.
+            Logado como <strong>{accountLabel(user)}</strong>. O username é imutável.
           </CardDescription>
         </CardHeader>
         <CardContent>
