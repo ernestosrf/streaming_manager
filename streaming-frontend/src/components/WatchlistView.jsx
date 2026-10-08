@@ -16,7 +16,7 @@ import { SessionExpiredError } from '@/lib/errors.js'
 
 function WatchlistView({ ownerUsername, isHome = false }) {
   const navigate = useNavigate()
-  const { isAuthenticated, user, meta, logout, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
+  const { isAuthenticated, user, meta, isAdmin, logout, makeAuthenticatedRequest, getAuthHeaders } = useAuth()
   const [owner, setOwner] = useState(null)
   const [content, setContent] = useState([])
   const [streamings, setStreamings] = useState([])
@@ -228,10 +228,15 @@ function WatchlistView({ ownerUsername, isHome = false }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">
-            {isHome ? 'Watchlist principal' : `Watchlist de @${owner?.username}`}
+            {isHome
+              ? `Watchlist de @${owner?.username || meta?.admin_username}`
+              : `Watchlist de @${owner?.username || ownerUsername}`}
           </h2>
           <p className="text-muted-foreground">
-            {isOwner ? 'Você pode gerenciar os títulos desta lista.' : 'Catálogo público para visualização.'}
+            {isOwner && isHome && 'Lista pública principal. Você pode gerenciar os títulos.'}
+            {isOwner && !isHome && 'Você pode gerenciar os títulos desta lista.'}
+            {!isOwner && isHome && 'Lista pública do administrador.'}
+            {!isOwner && !isHome && 'Catálogo público para visualização.'}
           </p>
         </div>
         {isOwner && (
@@ -246,18 +251,20 @@ function WatchlistView({ ownerUsername, isHome = false }) {
         <Card className="mb-6">
           <CardContent className="py-4">
             <p className="text-sm md:text-base">
-              Esta é a watchlist pública principal. Entre ou crie uma conta para montar a sua.
+              Esta é a lista pública de @{owner?.username || meta?.admin_username}. Entre ou crie uma conta para montar a sua.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {isAuthenticated && isHome && user && owner && user.username !== owner.username && (
+      {isAuthenticated && user && owner && user.username !== owner.username && (
         <Card className="mb-6">
           <CardContent className="py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <p className="text-sm md:text-base">Acesse a sua watchlist para adicionar e editar títulos.</p>
+            <p className="text-sm md:text-base">
+              Você está vendo a lista pública de @{owner.username}. A sua lista é outra.
+            </p>
             <Button asChild>
-              <Link to={`/${user.username}`}>Minha watchlist</Link>
+              <Link to={isAdmin ? '/' : `/${user.username}`}>Minha watchlist</Link>
             </Button>
           </CardContent>
         </Card>
