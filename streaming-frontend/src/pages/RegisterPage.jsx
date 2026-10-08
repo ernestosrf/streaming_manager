@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Label } from '@/components/ui/label.jsx'
@@ -7,15 +7,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 
 function RegisterPage() {
+  const navigate = useNavigate()
   const [form, setForm] = useState({ username: '', password: '', confirmPassword: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
-    setSuccess('')
 
     if (form.password !== form.confirmPassword) {
       setError('As senhas não coincidem.')
@@ -37,8 +36,10 @@ function RegisterPage() {
         setError(data.error || 'Não foi possível criar a conta.')
         return
       }
-      setSuccess(data.message)
-      setForm({ username: '', password: '', confirmPassword: '' })
+      navigate('/login', {
+        replace: true,
+        state: { message: data.message || 'Cadastro realizado. Faça login quando sua conta for aprovada.' },
+      })
     } catch {
       setError('Erro de conexão. Tente novamente.')
     } finally {
@@ -60,11 +61,6 @@ function RegisterPage() {
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {success && (
-              <Alert>
-                <AlertDescription>{success}</AlertDescription>
               </Alert>
             )}
 

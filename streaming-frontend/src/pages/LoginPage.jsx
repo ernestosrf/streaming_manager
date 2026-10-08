@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Label } from '@/components/ui/label.jsx'
@@ -11,6 +11,14 @@ import { ROLE_ADMIN, USER_STATUS } from '@/lib/constants.js'
 
 function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  // Lido uma vez e limpo do histórico para não reaparecer ao recarregar a página.
+  const [notice] = useState(location.state?.message || '')
+  useEffect(() => {
+    if (location.state?.message) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
   const { login, isAuthenticated, user, isAdmin } = useAuth()
   const [credentials, setCredentials] = useState({ username: '', password: '' })
   const [loading, setLoading] = useState(false)
@@ -64,6 +72,11 @@ function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {notice && (
+              <Alert>
+                <AlertDescription>{notice}</AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert variant={status === USER_STATUS.PENDING ? 'default' : 'destructive'}>
                 <AlertDescription>{error}</AlertDescription>
