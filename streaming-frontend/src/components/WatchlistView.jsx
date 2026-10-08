@@ -244,18 +244,10 @@ function WatchlistView({ ownerUsername, isHome = false }) {
 
       {isHome && !isAuthenticated && (
         <Card className="mb-6">
-          <CardContent className="py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardContent className="py-4">
             <p className="text-sm md:text-base">
               Esta é a watchlist pública principal. Entre ou crie uma conta para montar a sua.
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/login">Entrar</Link>
-              </Button>
-              <Button asChild>
-                <Link to="/register">Criar conta</Link>
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}
