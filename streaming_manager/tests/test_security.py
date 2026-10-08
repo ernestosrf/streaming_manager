@@ -88,6 +88,33 @@ def test_update_content_validates_partial_payload(client, app):
     assert ok.get_json()['title'] == 'Matrix'
 
 
+def test_register_rate_limit_counts_only_successful_creates(monkeypatch):
+    monkeypatch.setenv('REGISTER_RATE_LIMIT', '2 per hour')
+    app = create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+        'SQLALCHEMY_ENGINE_OPTIONS': {
+            'connect_args': {'check_same_thread': False},
+            'poolclass': StaticPool,
+        },
+        'RATELIMIT_ENABLED': True,
+    })
+    with app.app_context():
+        db.create_all()
+        client = app.test_client()
+        for _ in range(3):
+            rejected = client.post('/api/auth/register', json={'username': 'ab', 'password': 'senha1234'})
+            assert rejected.status_code == 400
+        first = client.post('/api/auth/register', json={'username': 'conta-um', 'password': 'senha1234'})
+        second = client.post('/api/auth/register', json={'username': 'conta-dois', 'password': 'senha1234'})
+        third = client.post('/api/auth/register', json={'username': 'conta-tres', 'password': 'senha1234'})
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert third.status_code == 429
+        db.session.remove()
+        db.drop_all()
+
+
 def test_login_is_rate_limited():
     app = create_app({
         'TESTING': True,

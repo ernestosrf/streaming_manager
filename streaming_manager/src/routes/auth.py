@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from flask import Blueprint, request, jsonify
@@ -24,8 +25,13 @@ def _dummy_password_hash():
     return generate_password_hash('dummy-password-for-timing')
 
 
+def _register_rate_limit():
+    # Produção fica em 5 cadastros por hora. O .env local pode aumentar para testes.
+    return os.environ.get('REGISTER_RATE_LIMIT', '5 per hour')
+
+
 @auth_bp.route('/register', methods=['POST'])
-@limiter.limit('5 per hour')
+@limiter.limit(_register_rate_limit, deduct_when=lambda response: response.status_code == 201)
 def register():
     data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip()
