@@ -244,7 +244,10 @@ def suggest_content(current_user):
 @content_bp.route('/content', methods=['POST'])
 @current_user_required
 def create_content(current_user):
-    fields, error = validate_content_payload(request.get_json(silent=True) or {})
+    data, error = json_object_body()
+    if error:
+        return error
+    fields, error = validate_content_payload(data)
     if error:
         return jsonify({'error': error}), 400
 
@@ -285,7 +288,10 @@ def update_content(current_user, content_id):
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
-    fields, error = validate_content_payload(request.get_json(silent=True) or {}, partial=True)
+    data, error = json_object_body()
+    if error:
+        return error
+    fields, error = validate_content_payload(data, partial=True)
     if error:
         return jsonify({'error': error}), 400
 

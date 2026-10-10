@@ -8,9 +8,12 @@ def server_error(action):
 
 
 def json_object_body():
-    """Retorna (dados, erro): o corpo JSON como dict, ou uma resposta 400 se não for um objeto."""
+    """Retorna (dados, erro): o corpo JSON como dict, ou uma resposta 400 se não for um objeto.
+
+    Só um corpo vazio vira ``{}``; ``null`` explícito ou JSON malformado também são rejeitados.
+    """
     data = request.get_json(silent=True)
-    if data is None:
+    if data is None and not request.get_data(cache=True).strip():
         return {}, None
     if not isinstance(data, dict):
         return None, (jsonify({'error': 'Corpo da requisição inválido.'}), 400)
