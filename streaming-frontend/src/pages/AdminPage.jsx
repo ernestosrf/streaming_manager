@@ -28,6 +28,8 @@ function AdminPage() {
   const [newPassword, setNewPassword] = useState('')
   const [page, setPage] = useState(1)
   const [totalUsers, setTotalUsers] = useState(0)
+  // Incrementado após cada ação para recarregar a lista pelo mesmo ciclo abortável do efeito.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const loadUsers = useCallback(async (signal) => {
     const params = new URLSearchParams()
@@ -37,8 +39,14 @@ function AdminPage() {
     params.set('per_page', String(USERS_PER_PAGE))
     const response = await makeAuthenticatedRequest(`/api/admin/users?${params.toString()}`, { signal })
     if (response.ok) {
+      const total = Number(response.headers.get('X-Total-Count')) || 0
       setUsers(await response.json())
-      setTotalUsers(Number(response.headers.get('X-Total-Count')) || 0)
+      setTotalUsers(total)
+      // Se a última linha da página sumiu, volta para a última página que ainda existe.
+      const lastPage = Math.max(1, Math.ceil(total / USERS_PER_PAGE))
+      if (page > lastPage) {
+        setPage(lastPage)
+      }
     }
   }, [makeAuthenticatedRequest, page, search, status])
 
@@ -59,7 +67,7 @@ function AdminPage() {
       clearTimeout(handle)
       controller.abort()
     }
-  }, [isAdmin, loadUsers])
+  }, [isAdmin, loadUsers, refreshKey])
 
   if (loading) {
     return null
@@ -88,7 +96,8 @@ function AdminPage() {
         login(data.access_token, user)
       }
       setMessage(data.message || 'Ação concluída.')
-      await Promise.all([loadUsers(), refreshPendingCount()])
+      setRefreshKey((current) => current + 1)
+      await refreshPendingCount()
       return true
     } catch (err) {
       setError(err.message || 'Erro de conexão. Tente novamente.')
