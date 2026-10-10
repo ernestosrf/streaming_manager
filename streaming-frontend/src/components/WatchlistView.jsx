@@ -383,23 +383,32 @@ function WatchlistView({ ownerUsername, isHome = false }) {
             <div>
               <Label>Streamings</Label>
               <div className="flex flex-wrap gap-2 mt-2">
-                {streamings.map((streaming) => (
-                  <Badge
-                    key={streaming.id}
-                    variant={selectedStreamings.includes(streaming.id.toString()) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      const streamingId = streaming.id.toString()
-                      if (selectedStreamings.includes(streamingId)) {
-                        setSelectedStreamings(selectedStreamings.filter((id) => id !== streamingId))
-                      } else {
-                        setSelectedStreamings([...selectedStreamings, streamingId])
-                      }
-                    }}
-                  >
-                    {streaming.name}
-                  </Badge>
-                ))}
+                {streamings.map((streaming) => {
+                  const streamingId = streaming.id.toString()
+                  const selected = selectedStreamings.includes(streamingId)
+                  return (
+                    <Badge
+                      key={streaming.id}
+                      asChild
+                      variant={selected ? 'default' : 'outline'}
+                      className="cursor-pointer outline-none"
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          if (selected) {
+                            setSelectedStreamings(selectedStreamings.filter((id) => id !== streamingId))
+                          } else {
+                            setSelectedStreamings([...selectedStreamings, streamingId])
+                          }
+                        }}
+                      >
+                        {streaming.name}
+                      </button>
+                    </Badge>
+                  )
+                })}
               </div>
             </div>
           </div>
