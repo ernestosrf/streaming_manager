@@ -180,6 +180,15 @@ def downgrade():
     conn = op.get_bind()
     tables = _table_names(conn)
     if 'content' in tables and 'owner_id' in _column_names(conn, 'content'):
+        # Sem owner_id os títulos de todos os usuários viram um catálogo global único.
+        foreign_content = conn.execute(sa.text(
+            "SELECT COUNT(*) FROM content c JOIN users u ON u.id = c.owner_id WHERE u.role != 'admin'"
+        )).scalar()
+        if foreign_content:
+            raise RuntimeError(
+                f'Downgrade abortado: {foreign_content} conteúdo(s) pertencem a usuários comuns e '
+                'perderiam o dono. Exporte ou remova esses conteúdos antes de reverter.'
+            )
         # O índice precisa sair antes da coluna, senão o batch do SQLite tenta recriá-lo.
         existing_indexes = {index['name'] for index in inspect(conn).get_indexes('content')}
         if 'ix_content_owner_id' in existing_indexes:
