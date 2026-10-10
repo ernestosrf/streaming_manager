@@ -5,7 +5,7 @@ from src.models.content import Content, StreamingPlatform, ContentStreaming
 from src.models.db import db
 from src.models.user import User, STATUS_ACTIVE
 from src.utils.auth import current_user_required, get_admin_user, get_user_from_jwt
-from src.utils.responses import server_error
+from src.utils.responses import json_object_body, server_error
 from src.utils.validators import VALID_CONTENT_TYPES, validate_content_payload
 from flask_jwt_extended import jwt_required
 
@@ -244,7 +244,10 @@ def suggest_content(current_user):
 @content_bp.route('/content', methods=['POST'])
 @current_user_required
 def create_content(current_user):
-    fields, error = validate_content_payload(request.get_json(silent=True) or {})
+    data, error = json_object_body()
+    if error:
+        return error
+    fields, error = validate_content_payload(data)
     if error:
         return jsonify({'error': error}), 400
 
@@ -285,7 +288,10 @@ def update_content(current_user, content_id):
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
-    fields, error = validate_content_payload(request.get_json(silent=True) or {}, partial=True)
+    data, error = json_object_body()
+    if error:
+        return error
+    fields, error = validate_content_payload(data, partial=True)
     if error:
         return jsonify({'error': error}), 400
 
@@ -329,7 +335,9 @@ def toggle_content_active(current_user, content_id):
     if content.owner_id != current_user.id:
         return _owner_forbidden()
 
-    data = request.get_json(silent=True) or {}
+    data, error = json_object_body()
+    if error:
+        return error
     target = data.get('is_active')
     if target is not None and not isinstance(target, bool):
         return jsonify({'error': 'is_active deve ser booleano.'}), 400

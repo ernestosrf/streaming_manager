@@ -3,7 +3,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.main import create_app
 from src.models.db import db
-from tests.conftest import add_platform, auth_header, create_admin, create_user
+from tests.conftest import add_content, add_platform, auth_header, create_admin, create_user
 
 
 def test_password_change_invalidates_old_tokens(client, app):
@@ -160,3 +160,72 @@ def test_register_race_returns_conflict(client, app, monkeypatch):
     monkeypatch.setattr(type(User.query), 'first', lambda self: None)
     response = client.post('/api/auth/register', json={'username': 'maria', 'password': 'outrasenha'})
     assert response.status_code == 409
+
+
+@pytest.mark.parametrize('method, url, payload', [
+    ('post', '/api/auth/register', ['maria']),
+    ('post', '/api/auth/register', {'username': 1, 'password': 'senha1234'}),
+    ('post', '/api/auth/login', ['maria']),
+    ('post', '/api/auth/login', {'username': 1, 'password': 'senha1234'}),
+    ('post', '/api/auth/login', {'username': 'maria', 'password': 1234}),
+])
+def test_public_auth_rejects_malformed_bodies(client, app, method, url, payload):
+    response = getattr(client, method)(url, json=payload)
+    assert response.status_code == 400
+
+
+def test_authenticated_routes_reject_non_object_bodies(client, app):
+    create_admin()
+    maria = create_user('maria', 'senha1234')
+    platform = add_platform()
+    content = add_content(maria)
+    admin_headers = auth_header(client, 'admin', 'admin-password')
+    maria_headers = auth_header(client, 'maria', 'senha1234')
+
+    cases = [
+        (client.post, '/api/auth/change-password', maria_headers),
+        (client.post, f'/api/admin/users/{maria.id}/reset-password', admin_headers),
+        (client.patch, f'/api/content/{content.id}/toggle', maria_headers),
+        (client.post, '/api/streamings', admin_headers),
+        (client.put, f'/api/streamings/{platform.id}', admin_headers),
+    ]
+    for call, url, headers in cases:
+        response = call(url, json=[1], headers=headers)
+        assert response.status_code == 400, url
+
+
+def test_streaming_active_must_be_boolean(client, app):
+    create_admin()
+    platform = add_platform()
+    headers = auth_header(client, 'admin', 'admin-password')
+    assert client.post('/api/streamings', json={'name': 'Max', 'active': 'yes'}, headers=headers).status_code == 400
+    assert client.put(f'/api/streamings/{platform.id}', json={'active': 'no'}, headers=headers).status_code == 400
+
+
+def test_null_or_malformed_json_bodies_are_rejected(client, app):
+    create_admin()
+    maria = create_user('maria', 'senha1234')
+    platform = add_platform()
+    content = add_content(maria)
+    admin_headers = auth_header(client, 'admin', 'admin-password')
+    maria_headers = auth_header(client, 'maria', 'senha1234')
+
+    cases = [
+        (client.post, '/api/content', maria_headers),
+        (client.put, f'/api/content/{content.id}', maria_headers),
+        (client.patch, f'/api/content/{content.id}/toggle', maria_headers),
+        (client.put, f'/api/streamings/{platform.id}', admin_headers),
+    ]
+    for body in ('null', '{"title": '):
+        for call, url, headers in cases:
+            response = call(url, data=body, content_type='application/json', headers=headers)
+            assert response.status_code == 400, (url, body)
+
+
+def test_empty_toggle_body_still_flips_state(client, app):
+    maria = create_user('maria', 'senha1234')
+    content = add_content(maria, active=True)
+    headers = auth_header(client, 'maria', 'senha1234')
+    response = client.patch(f'/api/content/{content.id}/toggle', headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()['is_active'] is False

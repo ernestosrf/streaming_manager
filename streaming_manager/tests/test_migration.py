@@ -160,3 +160,28 @@ def test_migration_rejects_invalid_admin_username(tmp_path, monkeypatch):
         db.engine.dispose()
 
     assert 'users' not in _table_names(db_path)
+
+
+def test_downgrade_refuses_when_users_own_content(tmp_path, monkeypatch):
+    from flask_migrate import downgrade
+    monkeypatch.setenv('ADMIN_USERNAME', 'admin')
+    monkeypatch.setenv('ADMIN_PASSWORD', 'admin-password')
+    db_path = tmp_path / 'owned.db'
+    migrations_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'migrations'))
+
+    with _migration_app(db_path).app_context():
+        upgrade(directory=migrations_dir)
+        maria = User(username='maria', role='user', status='active')
+        maria.set_password('senha1234')
+        db.session.add(maria)
+        db.session.flush()
+        db.session.add(Content(title='Matrix', type='movie', owner_id=maria.id))
+        db.session.commit()
+
+        # O Flask-Migrate registra o erro da migração e encerra com SystemExit.
+        with pytest.raises(SystemExit):
+            downgrade(directory=migrations_dir, revision='base')
+        db.engine.dispose()
+
+    assert 'users' in _table_names(db_path)
+    assert 'owner_id' in _content_columns(db_path)

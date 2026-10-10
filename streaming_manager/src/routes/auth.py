@@ -8,6 +8,7 @@ from src.models.db import db
 from src.models.user import User, ROLE_USER, STATUS_PENDING, STATUS_ACTIVE, STATUS_INACTIVE, STATUS_REJECTED
 from src.utils.auth import current_user_required, get_user_from_jwt, issue_access_token
 from src.utils.rate_limit import limiter
+from src.utils.responses import json_object_body
 from src.utils.validators import validate_password, validate_username
 from flask_jwt_extended import jwt_required
 
@@ -33,8 +34,12 @@ def _register_rate_limit():
 @auth_bp.route('/register', methods=['POST'])
 @limiter.limit(_register_rate_limit, deduct_when=lambda response: response.status_code == 201)
 def register():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('username') or '').strip()
+    data, error = json_object_body()
+    if error:
+        return error
+    username = data.get('username')
+    if isinstance(username, str):
+        username = username.strip()
     password = data.get('password')
 
     username_error = validate_username(username)
@@ -71,11 +76,15 @@ def register():
 @auth_bp.route('/login', methods=['POST'])
 @limiter.limit('10 per minute; 50 per hour')
 def login():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('username') or '').strip()
+    data, error = json_object_body()
+    if error:
+        return error
+    username = data.get('username')
+    if isinstance(username, str):
+        username = username.strip()
     password = data.get('password')
 
-    if not username or not password:
+    if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
         return jsonify({'error': 'Username e senha são obrigatórios.'}), 400
 
     user = User.query.filter_by(username=username).first()
@@ -137,11 +146,13 @@ def logout(current_user):
 @limiter.limit('10 per hour')
 @current_user_required
 def change_password(current_user):
-    data = request.get_json(silent=True) or {}
+    data, error = json_object_body()
+    if error:
+        return error
     current_password = data.get('current_password')
     new_password = data.get('new_password')
 
-    if not current_password:
+    if not current_password or not isinstance(current_password, str):
         return jsonify({'error': 'Senha atual é obrigatória.'}), 400
 
     if not current_user.check_password(current_password):
