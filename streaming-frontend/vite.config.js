@@ -23,7 +23,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.NODE_ENV === 'production' ? 'https://your-app.onrender.com' : 'http://localhost:5000',
+        // Proxy do servidor de desenvolvimento; em produção o Flask serve o build e a API na mesma origem.
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:5000',
         changeOrigin: true,
       },
     },

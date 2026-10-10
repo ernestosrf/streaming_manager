@@ -1,0 +1,5 @@
+Migrações versionadas do Streaming Manager (Flask-Migrate / Alembic).
+
+Execute a partir de `streaming_manager`:
+
+    python migrate.py
