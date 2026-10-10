@@ -10,6 +10,7 @@ from src.models.user import (
     STATUSES,
 )
 from src.utils.auth import admin_required, issue_access_token
+from src.utils.responses import json_object_body
 from src.utils.time import utcnow
 from src.utils.validators import validate_password
 
@@ -159,7 +160,9 @@ def reset_password(current_user, user_id):
     if error:
         return error
 
-    data = request.get_json(silent=True) or {}
+    data, error = json_object_body()
+    if error:
+        return error
     new_password = data.get('new_password')
     password_error = validate_password(new_password)
     if password_error:

@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import IntegrityError
 from src.models.content import StreamingPlatform, db
 from src.utils.auth import admin_required
-from src.utils.responses import server_error
+from src.utils.responses import json_object_body, server_error
 
 streaming_bp = Blueprint('streaming', __name__)
 
@@ -34,11 +34,15 @@ def get_streamings():
 @streaming_bp.route('/streamings', methods=['POST'])
 @admin_required
 def create_streaming(current_user):
-    data = request.get_json(silent=True) or {}
+    data, error = json_object_body()
+    if error:
+        return error
 
     name, error = _clean_name(data.get('name'))
     if error:
         return jsonify({'error': error}), 400
+    if not isinstance(data.get('active', True), bool):
+        return jsonify({'error': 'active deve ser booleano'}), 400
 
     existing = StreamingPlatform.query.filter_by(name=name).first()
     if existing:
@@ -66,12 +70,16 @@ def create_streaming(current_user):
 @admin_required
 def update_streaming(current_user, streaming_id):
     streaming = db.get_or_404(StreamingPlatform, streaming_id)
-    data = request.get_json(silent=True) or {}
+    data, error = json_object_body()
+    if error:
+        return error
 
     if 'name' in data:
         name, error = _clean_name(data['name'])
         if error:
             return jsonify({'error': error}), 400
+    if 'active' in data and not isinstance(data['active'], bool):
+        return jsonify({'error': 'active deve ser booleano'}), 400
 
     try:
         if 'name' in data:
