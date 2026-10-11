@@ -14,6 +14,13 @@ function Layout() {
     <div className="min-h-screen bg-background">
       <AppHeader />
       <Outlet />
+      <footer className="px-4 py-6 text-center text-xs text-muted-foreground">
+        Dados e pôsteres de filmes e séries:{' '}
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer" className="underline">
+          TMDB
+        </a>
+        . Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.
+      </footer>
     </div>
   )
 }

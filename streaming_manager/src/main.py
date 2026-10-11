@@ -66,6 +66,7 @@ def create_app(config_overrides=None):
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['RATELIMIT_STORAGE_URI'] = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     app.config['RATELIMIT_HEADERS_ENABLED'] = True
+    app.config['TMDB_API_KEY'] = os.environ.get('TMDB_API_KEY', '').strip() or None
 
     if config_overrides:
         app.config.update(config_overrides)

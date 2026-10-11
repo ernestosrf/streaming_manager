@@ -8,6 +8,9 @@ import { Checkbox } from '@/components/ui/checkbox.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { CONTENT_TYPE_LABELS, getContentTypeLabel } from '@/lib/constants.js'
 
+const MIN_QUERY_LENGTH = 2
+const SEARCH_DEBOUNCE_MS = 300
+
 const emptyForm = {
   title: '',
   year: '',
@@ -15,6 +18,66 @@ const emptyForm = {
   genre: '',
   poster_url: '',
   streaming_ids: [],
+}
+
+const suggestionKey = (item) => `${item.title.trim().toLowerCase()}|${item.year ?? ''}`
+
+// Busca com debounce; cancela o timer e a requisição em andamento quando a URL muda,
+// evitando resultados obsoletos. Sem URL, a lista é esvaziada.
+function useDebouncedResults(url) {
+  const { makeAuthenticatedRequest } = useAuth()
+  const [results, setResults] = useState([])
+
+  useEffect(() => {
+    if (!url) {
+      setResults([])
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const handle = setTimeout(async () => {
+      try {
+        const response = await makeAuthenticatedRequest(url, { signal: controller.signal })
+        setResults(response.ok ? await response.json() : [])
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Erro ao buscar sugestões:', err)
+        }
+      }
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
+  }, [url, makeAuthenticatedRequest])
+
+  return results
+}
+
+function SuggestionButton({ item, onSelect }) {
+  const thumbnail = item.thumbnail_url || item.poster_url
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+      onClick={() => onSelect(item)}
+    >
+      {thumbnail ? (
+        <img src={thumbnail} alt="" loading="lazy" className="h-12 w-8 shrink-0 rounded object-cover" />
+      ) : (
+        <div className="h-12 w-8 shrink-0 rounded bg-muted" />
+      )}
+      <span className="min-w-0">
+        <span className="block truncate font-medium">{item.title}</span>
+        <span className="block truncate text-muted-foreground">
+          {item.year ? `${item.year} · ` : ''}
+          {getContentTypeLabel(item.type)}
+          {item.genre ? ` · ${item.genre}` : ''}
+        </span>
+      </span>
+    </button>
+  )
 }
 
 function ContentFormDialog({
@@ -26,7 +89,7 @@ function ContentFormDialog({
 }) {
   const { makeAuthenticatedRequest } = useAuth()
   const [formData, setFormData] = useState(emptyForm)
-  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -35,7 +98,7 @@ function ContentFormDialog({
       return
     }
     setError('')
-    setSuggestions([])
+    setShowSuggestions(false)
     if (editingContent) {
       setFormData({
         title: editingContent.title || '',
@@ -50,42 +113,28 @@ function ContentFormDialog({
     }
   }, [open, editingContent])
 
-  useEffect(() => {
-    if (!open || editingContent || formData.title.trim().length < 2) {
-      setSuggestions([])
-      return undefined
+  const query = formData.title.trim()
+  const searching = open && !editingContent && showSuggestions && query.length >= MIN_QUERY_LENGTH
+  let suggestionsUrl = null
+  let lookupUrl = null
+  if (searching) {
+    const params = new URLSearchParams({ q: query })
+    // O TMDB sugere o tipo e o ano; filtrar por eles só faz sentido nas watchlists.
+    lookupUrl = `/api/content/lookup?${params.toString()}`
+    if (formData.type) {
+      params.set('type', formData.type)
     }
-
-    const controller = new AbortController()
-    const handle = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ q: formData.title.trim() })
-        if (formData.type) {
-          params.set('type', formData.type)
-        }
-        if (formData.year) {
-          params.set('year', String(formData.year))
-        }
-        const response = await makeAuthenticatedRequest(
-          `/api/content/suggestions?${params.toString()}`,
-          { signal: controller.signal },
-        )
-        if (response.ok) {
-          setSuggestions(await response.json())
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error('Erro ao buscar sugestões:', err)
-        }
-      }
-    }, 300)
-
-    // Cancela o timer e também a requisição em andamento, evitando sugestões obsoletas.
-    return () => {
-      clearTimeout(handle)
-      controller.abort()
+    if (formData.year) {
+      params.set('year', String(formData.year))
     }
-  }, [formData.title, formData.type, formData.year, open, editingContent, makeAuthenticatedRequest])
+    suggestionsUrl = `/api/content/suggestions?${params.toString()}`
+  }
+
+  const suggestions = useDebouncedResults(suggestionsUrl)
+  const lookupResults = useDebouncedResults(lookupUrl)
+  const localKeys = new Set(suggestions.map(suggestionKey))
+  const externalSuggestions = lookupResults.filter((item) => !localKeys.has(suggestionKey(item)))
+  const hasSuggestions = searching && (suggestions.length > 0 || externalSuggestions.length > 0)
 
   const applySuggestion = (item) => {
     setFormData({
@@ -96,7 +145,26 @@ function ContentFormDialog({
       poster_url: item.poster_url || '',
       streaming_ids: item.streamings?.map((streaming) => streaming.id) || [],
     })
-    setSuggestions([])
+    setShowSuggestions(false)
+  }
+
+  // O TMDB não informa streamings: mantém os que já estiverem marcados.
+  const applyLookupResult = (item) => {
+    setFormData((current) => ({
+      ...current,
+      title: item.title || '',
+      year: item.year || '',
+      type: item.type || current.type,
+      genre: item.genre || '',
+      poster_url: item.poster_url || '',
+    }))
+    setShowSuggestions(false)
+  }
+
+  const handleTitleAreaBlur = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setShowSuggestions(false)
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -129,13 +197,22 @@ function ContentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="max-w-2xl"
+        onEscapeKeyDown={(e) => {
+          // Com sugestões abertas, Esc fecha só a lista, não o diálogo.
+          if (hasSuggestions) {
+            e.preventDefault()
+            setShowSuggestions(false)
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{editingContent ? 'Editar Conteúdo' : 'Adicionar Novo Conteúdo'}</DialogTitle>
           <DialogDescription>
             {editingContent
               ? 'Atualize as informações do conteúdo'
-              : 'Preencha as informações do filme, série ou anime. Sugestões de outros catálogos aparecem ao digitar o título.'}
+              : 'Digite o título e escolha uma sugestão para preencher ano, tipo, gênero e pôster. Depois, confira o tipo e marque os streamings.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -143,31 +220,41 @@ function ContentFormDialog({
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="relative">
+            <div className="relative" onBlur={handleTitleAreaBlur}>
               <Label htmlFor="title">Título *</Label>
               <Input
                 id="title"
                 value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, title: e.target.value })
+                  setShowSuggestions(true)
+                }}
                 autoComplete="off"
                 required
               />
-              {!editingContent && suggestions.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow-md">
-                  {suggestions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
-                      onClick={() => applySuggestion(item)}
-                    >
-                      <span className="font-medium">{item.title}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        {item.year ? `${item.year} · ` : ''}
-                        {getContentTypeLabel(item.type)}
-                      </span>
-                    </button>
-                  ))}
+              {hasSuggestions && (
+                // Ocupa a largura das duas colunas. O mouseDown não tira o foco do campo;
+                // pelo teclado, Tab percorre as opções.
+                <div
+                  className="absolute left-0 z-20 mt-1 max-h-80 w-[calc(200%+1rem)] overflow-y-auto rounded-md border bg-popover shadow-md"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {suggestions.length > 0 && (
+                    <div>
+                      <p className="px-3 pt-2 text-xs font-medium text-muted-foreground">Nas watchlists</p>
+                      {suggestions.map((item) => (
+                        <SuggestionButton key={item.id} item={item} onSelect={applySuggestion} />
+                      ))}
+                    </div>
+                  )}
+                  {externalSuggestions.length > 0 && (
+                    <div>
+                      <p className="px-3 pt-2 text-xs font-medium text-muted-foreground">Do TMDB</p>
+                      {externalSuggestions.map((item) => (
+                        <SuggestionButton key={item.id} item={item} onSelect={applyLookupResult} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -208,11 +295,20 @@ function ContentFormDialog({
 
           <div>
             <Label htmlFor="poster_url">URL do Poster</Label>
-            <Input
-              id="poster_url"
-              value={formData.poster_url}
-              onChange={(e) => setFormData({ ...formData, poster_url: e.target.value })}
-            />
+            <div className="flex items-center gap-3">
+              <Input
+                id="poster_url"
+                value={formData.poster_url}
+                onChange={(e) => setFormData({ ...formData, poster_url: e.target.value })}
+              />
+              {formData.poster_url && (
+                <img
+                  src={formData.poster_url}
+                  alt="Pré-visualização do pôster"
+                  className="h-16 w-11 shrink-0 rounded object-cover"
+                />
+              )}
+            </div>
           </div>
 
           <div>
