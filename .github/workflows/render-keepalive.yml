@@ -1,0 +1,28 @@
+# Mantém o serviço web da Render (plano gratuito) acordado.
+# A Render hiberna serviços gratuitos após 15 minutos sem tráfego de entrada;
+# este job chama /api/health a cada 5 minutos. O GitHub não garante o horário
+# exato dos agendamentos, então o intervalo curto dá folga para atrasos.
+#
+# Ligado 24h, o serviço consome ~744 das 750 horas gratuitas mensais do
+# workspace da Render. Outro serviço gratuito no mesmo workspace esgotaria
+# a cota, e a Render suspende todos os serviços gratuitos até o mês seguinte.
+
+name: Render keep-alive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # permite execução manual pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chamar /api/health
+        env:
+          HEALTH_URL: https://streaming-manager.onrender.com/api/health
+        # Se o serviço estiver hibernando, acordar leva cerca de 1 minuto.
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            --retry 3 --retry-delay 10 --retry-all-errors "$HEALTH_URL"
