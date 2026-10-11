@@ -169,6 +169,46 @@ def test_lookup_reports_tmdb_failure(client, app, user_headers, monkeypatch):
     assert 'error' in response.get_json()
 
 
+def test_lookup_tolerates_null_genres(client, user_headers, fake_tmdb, monkeypatch):
+    monkeypatch.setitem(SEARCH_RESULTS, 'results', [{
+        'id': 7,
+        'media_type': 'tv',
+        'name': 'Sem gêneros',
+        'first_air_date': '2020-01-01',
+        'genre_ids': None,
+    }])
+
+    response = client.get('/api/content/lookup?q=sem', headers=user_headers)
+    assert response.status_code == 200
+    item = response.get_json()[0]
+    assert item['genre'] is None
+    assert item['type'] == 'series'
+
+
+@pytest.mark.parametrize('payload', [
+    {'results': [{'media_type': 'movie', 'title': 'Sem id'}]},
+    {'results': None},
+    ['não é um objeto'],
+])
+def test_lookup_reports_unexpected_payload_as_tmdb_failure(client, app, user_headers, monkeypatch, payload):
+    app.config['TMDB_API_KEY'] = 'test-key'
+
+    def fake_get(path, api_key, **params):
+        return payload if path == '/search/multi' else GENRES[path]
+
+    monkeypatch.setattr(tmdb, '_get', fake_get)
+    tmdb._genre_names.cache_clear()
+    response = client.get('/api/content/lookup?q=matrix', headers=user_headers)
+    tmdb._genre_names.cache_clear()
+    assert response.status_code == 502
+
+
+@pytest.mark.parametrize('api_key, enabled', [('test-key', True), (None, False)])
+def test_meta_reports_whether_tmdb_is_enabled(client, app, api_key, enabled):
+    app.config['TMDB_API_KEY'] = api_key
+    assert client.get('/api/meta').get_json()['tmdb_enabled'] is enabled
+
+
 @pytest.mark.parametrize('api_key, expect_bearer', [
     ('0123456789abcdef0123456789abcdef', False),
     ('eyJhbGciOiJIUzI1NiJ9.payload.signature', True),

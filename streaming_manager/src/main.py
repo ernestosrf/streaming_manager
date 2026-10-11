@@ -111,6 +111,7 @@ def create_app(config_overrides=None):
         admin = get_admin_user()
         return jsonify({
             'admin_username': admin.username if admin else None,
+            'tmdb_enabled': bool(app.config.get('TMDB_API_KEY')),
         })
 
     @app.route('/', defaults={'path': ''})

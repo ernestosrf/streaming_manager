@@ -66,8 +66,12 @@ def _year(date_text):
     return int(year) if year.isdigit() else None
 
 
+def _genre_ids(item):
+    return item.get('genre_ids') or []
+
+
 def _content_type(item, media_type):
-    if ANIMATION_GENRE_ID in item.get('genre_ids', []) and item.get('original_language') == 'ja':
+    if ANIMATION_GENRE_ID in _genre_ids(item) and item.get('original_language') == 'ja':
         return 'anime'
     return MEDIA_TYPES[media_type]
 
@@ -76,7 +80,7 @@ def _to_suggestion(item, genre_names):
     media_type = item['media_type']
     title_key, date_key = ('title', 'release_date') if media_type == 'movie' else ('name', 'first_air_date')
     poster_path = item.get('poster_path')
-    genres = [genre_names[gid] for gid in item.get('genre_ids', []) if gid in genre_names]
+    genres = [genre_names[gid] for gid in _genre_ids(item) if gid in genre_names]
     return {
         'id': f"{media_type}-{item['id']}",
         'title': (item.get(title_key) or '').strip()[:MAX_TITLE_LENGTH],
@@ -91,11 +95,14 @@ def _to_suggestion(item, genre_names):
 def search(query, api_key):
     """Busca filmes e séries pelo título e devolve dados no formato do formulário de conteúdo."""
     data = _get('/search/multi', api_key, query=query, language=LANGUAGE, include_adult='false')
-    items = [
-        item for item in data.get('results', [])
-        if item.get('media_type') in MEDIA_TYPES
-    ][:MAX_RESULTS]
-    if not items:
-        return []
-    genre_names = _genre_names(api_key)
-    return [_to_suggestion(item, genre_names) for item in items]
+    try:
+        items = [
+            item for item in data.get('results', [])
+            if item.get('media_type') in MEDIA_TYPES
+        ][:MAX_RESULTS]
+        if not items:
+            return []
+        genre_names = _genre_names(api_key)
+        return [_to_suggestion(item, genre_names) for item in items]
+    except (AttributeError, KeyError, TypeError) as exc:
+        raise TmdbError(f'Resposta inesperada do TMDB: {exc!r}') from exc

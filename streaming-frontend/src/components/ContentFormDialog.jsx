@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog.jsx'
@@ -7,9 +7,12 @@ import { Label } from '@/components/ui/label.jsx'
 import { Checkbox } from '@/components/ui/checkbox.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { CONTENT_TYPE_LABELS, getContentTypeLabel } from '@/lib/constants.js'
+import { cn } from '@/lib/utils.js'
 
 const MIN_QUERY_LENGTH = 2
 const SEARCH_DEBOUNCE_MS = 300
+const LISTBOX_ID = 'title-suggestions'
+const NO_RESULTS = { items: [], failed: false }
 
 const emptyForm = {
   title: '',
@@ -21,16 +24,17 @@ const emptyForm = {
 }
 
 const suggestionKey = (item) => `${item.title.trim().toLowerCase()}|${item.year ?? ''}`
+const optionDomId = (key) => `${LISTBOX_ID}-${key}`
 
-// Busca com debounce; cancela o timer e a requisição em andamento quando a URL muda,
-// evitando resultados obsoletos. Sem URL, a lista é esvaziada.
+// Busca com debounce. Cada resposta fica marcada com a URL que a gerou e só a da URL atual
+// é devolvida: enquanto a busca nova não termina, ou se ela falha, a lista fica vazia em
+// vez de mostrar resultados de outra consulta.
 function useDebouncedResults(url) {
   const { makeAuthenticatedRequest } = useAuth()
-  const [results, setResults] = useState([])
+  const [results, setResults] = useState({ url: null, ...NO_RESULTS })
 
   useEffect(() => {
     if (!url) {
-      setResults([])
       return undefined
     }
 
@@ -38,11 +42,14 @@ function useDebouncedResults(url) {
     const handle = setTimeout(async () => {
       try {
         const response = await makeAuthenticatedRequest(url, { signal: controller.signal })
-        setResults(response.ok ? await response.json() : [])
+        const items = response.ok ? await response.json() : []
+        setResults({ url, items, failed: !response.ok })
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error('Erro ao buscar sugestões:', err)
+        if (err.name === 'AbortError') {
+          return
         }
+        console.error('Erro ao buscar sugestões:', err)
+        setResults({ url, items: [], failed: true })
       }
     }, SEARCH_DEBOUNCE_MS)
 
@@ -52,16 +59,24 @@ function useDebouncedResults(url) {
     }
   }, [url, makeAuthenticatedRequest])
 
-  return results
+  return url && results.url === url ? results : NO_RESULTS
 }
 
-function SuggestionButton({ item, onSelect }) {
+// O foco fica sempre no campo de título (aria-activedescendant aponta a opção destacada),
+// por isso a opção não é um botão focável.
+function SuggestionOption({ option, active }) {
+  const { item } = option
   const thumbnail = item.thumbnail_url || item.poster_url
   return (
-    <button
-      type="button"
-      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-      onClick={() => onSelect(item)}
+    <div
+      id={optionDomId(option.key)}
+      role="option"
+      aria-selected={active}
+      className={cn(
+        'flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-accent',
+        active && 'bg-accent',
+      )}
+      onClick={() => option.apply(item)}
     >
       {thumbnail ? (
         <img src={thumbnail} alt="" loading="lazy" className="h-12 w-8 shrink-0 rounded object-cover" />
@@ -76,7 +91,7 @@ function SuggestionButton({ item, onSelect }) {
           {item.genre ? ` · ${item.genre}` : ''}
         </span>
       </span>
-    </button>
+    </div>
   )
 }
 
@@ -87,11 +102,14 @@ function ContentFormDialog({
   editingContent,
   onSaved,
 }) {
-  const { makeAuthenticatedRequest } = useAuth()
+  const { makeAuthenticatedRequest, meta } = useAuth()
   const [formData, setFormData] = useState(emptyForm)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [activeKey, setActiveKey] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Indica se os streamings marcados vieram de uma sugestão das watchlists (e não da pessoa).
+  const streamingsFromSuggestion = useRef(false)
 
   useEffect(() => {
     if (!open) {
@@ -99,6 +117,8 @@ function ContentFormDialog({
     }
     setError('')
     setShowSuggestions(false)
+    setActiveKey(null)
+    streamingsFromSuggestion.current = false
     if (editingContent) {
       setFormData({
         title: editingContent.title || '',
@@ -113,28 +133,16 @@ function ContentFormDialog({
     }
   }, [open, editingContent])
 
-  const query = formData.title.trim()
-  const searching = open && !editingContent && showSuggestions && query.length >= MIN_QUERY_LENGTH
-  let suggestionsUrl = null
-  let lookupUrl = null
-  if (searching) {
-    const params = new URLSearchParams({ q: query })
-    // O TMDB sugere o tipo e o ano; filtrar por eles só faz sentido nas watchlists.
-    lookupUrl = `/api/content/lookup?${params.toString()}`
-    if (formData.type) {
-      params.set('type', formData.type)
+  useEffect(() => {
+    if (activeKey) {
+      document.getElementById(optionDomId(activeKey))?.scrollIntoView({ block: 'nearest' })
     }
-    if (formData.year) {
-      params.set('year', String(formData.year))
-    }
-    suggestionsUrl = `/api/content/suggestions?${params.toString()}`
-  }
+  }, [activeKey])
 
-  const suggestions = useDebouncedResults(suggestionsUrl)
-  const lookupResults = useDebouncedResults(lookupUrl)
-  const localKeys = new Set(suggestions.map(suggestionKey))
-  const externalSuggestions = lookupResults.filter((item) => !localKeys.has(suggestionKey(item)))
-  const hasSuggestions = searching && (suggestions.length > 0 || externalSuggestions.length > 0)
+  const closeSuggestions = () => {
+    setShowSuggestions(false)
+    setActiveKey(null)
+  }
 
   const applySuggestion = (item) => {
     setFormData({
@@ -145,11 +153,15 @@ function ContentFormDialog({
       poster_url: item.poster_url || '',
       streaming_ids: item.streamings?.map((streaming) => streaming.id) || [],
     })
-    setShowSuggestions(false)
+    streamingsFromSuggestion.current = true
+    closeSuggestions()
   }
 
-  // O TMDB não informa streamings: mantém os que já estiverem marcados.
+  // O TMDB não informa streamings. Os que vieram de outra sugestão pertencem a outro título
+  // e são descartados; os marcados pela pessoa ficam.
   const applyLookupResult = (item) => {
+    const keepStreamings = !streamingsFromSuggestion.current
+    streamingsFromSuggestion.current = false
     setFormData((current) => ({
       ...current,
       title: item.title || '',
@@ -157,13 +169,74 @@ function ContentFormDialog({
       type: item.type || current.type,
       genre: item.genre || '',
       poster_url: item.poster_url || '',
+      streaming_ids: keepStreamings ? current.streaming_ids : [],
     }))
-    setShowSuggestions(false)
+    closeSuggestions()
+  }
+
+  const query = formData.title.trim()
+  const searching = open && !editingContent && showSuggestions && query.length >= MIN_QUERY_LENGTH
+  let suggestionsUrl = null
+  let lookupUrl = null
+  if (searching) {
+    const params = new URLSearchParams({ q: query })
+    // O TMDB sugere o tipo e o ano; filtrar por eles só faz sentido nas watchlists.
+    if (meta.tmdb_enabled) {
+      lookupUrl = `/api/content/lookup?${params.toString()}`
+    }
+    if (formData.type) {
+      params.set('type', formData.type)
+    }
+    if (formData.year) {
+      params.set('year', String(formData.year))
+    }
+    suggestionsUrl = `/api/content/suggestions?${params.toString()}`
+  }
+
+  const local = useDebouncedResults(suggestionsUrl)
+  const lookup = useDebouncedResults(lookupUrl)
+  const localKeys = new Set(local.items.map(suggestionKey))
+  const localOptions = local.items.map((item) => ({ key: `local-${item.id}`, item, apply: applySuggestion }))
+  const tmdbOptions = lookup.items
+    .filter((item) => !localKeys.has(suggestionKey(item)))
+    .map((item) => ({ key: `tmdb-${item.id}`, item, apply: applyLookupResult }))
+  const options = [...localOptions, ...tmdbOptions]
+  const activeIndex = options.findIndex((option) => option.key === activeKey)
+  const listVisible = searching && (options.length > 0 || lookup.failed)
+
+  const handleTitleKeyDown = (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!listVisible) {
+        if (event.key === 'ArrowDown' && query.length >= MIN_QUERY_LENGTH) {
+          event.preventDefault()
+          setShowSuggestions(true)
+        }
+        return
+      }
+      if (options.length === 0) {
+        return
+      }
+      event.preventDefault()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      const next = activeIndex === -1
+        ? (step === 1 ? 0 : options.length - 1)
+        : (activeIndex + step + options.length) % options.length
+      setActiveKey(options[next].key)
+    } else if (event.key === 'Enter' && searching) {
+      // Com a busca ativa, Enter escolhe a sugestão destacada (ou só fecha a lista)
+      // em vez de enviar o formulário só com o texto digitado.
+      event.preventDefault()
+      if (activeIndex >= 0) {
+        options[activeIndex].apply(options[activeIndex].item)
+      } else {
+        closeSuggestions()
+      }
+    }
   }
 
   const handleTitleAreaBlur = (event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) {
-      setShowSuggestions(false)
+      closeSuggestions()
     }
   }
 
@@ -201,9 +274,9 @@ function ContentFormDialog({
         className="max-w-2xl"
         onEscapeKeyDown={(e) => {
           // Com sugestões abertas, Esc fecha só a lista, não o diálogo.
-          if (hasSuggestions) {
+          if (listVisible) {
             e.preventDefault()
-            setShowSuggestions(false)
+            closeSuggestions()
           }
         }}
       >
@@ -228,31 +301,50 @@ function ContentFormDialog({
                 onChange={(e) => {
                   setFormData({ ...formData, title: e.target.value })
                   setShowSuggestions(true)
+                  setActiveKey(null)
                 }}
+                onKeyDown={handleTitleKeyDown}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={listVisible}
+                aria-controls={LISTBOX_ID}
+                aria-activedescendant={activeIndex >= 0 ? optionDomId(activeKey) : undefined}
                 autoComplete="off"
                 required
               />
-              {hasSuggestions && (
-                // Ocupa a largura das duas colunas. O mouseDown não tira o foco do campo;
-                // pelo teclado, Tab percorre as opções.
+              {listVisible && (
+                // Ocupa a largura das duas colunas. O mouseDown não tira o foco do campo.
                 <div
+                  id={LISTBOX_ID}
+                  role="listbox"
+                  aria-label="Sugestões de títulos"
                   className="absolute left-0 z-20 mt-1 max-h-80 w-[calc(200%+1rem)] overflow-y-auto rounded-md border bg-popover shadow-md"
                   onMouseDown={(e) => e.preventDefault()}
                 >
-                  {suggestions.length > 0 && (
-                    <div>
-                      <p className="px-3 pt-2 text-xs font-medium text-muted-foreground">Nas watchlists</p>
-                      {suggestions.map((item) => (
-                        <SuggestionButton key={item.id} item={item} onSelect={applySuggestion} />
+                  {localOptions.length > 0 && (
+                    <div role="group" aria-labelledby={`${LISTBOX_ID}-local`}>
+                      <p id={`${LISTBOX_ID}-local`} className="px-3 pt-2 text-xs font-medium text-muted-foreground">
+                        Nas watchlists
+                      </p>
+                      {localOptions.map((option) => (
+                        <SuggestionOption key={option.key} option={option} active={option.key === activeKey} />
                       ))}
                     </div>
                   )}
-                  {externalSuggestions.length > 0 && (
-                    <div>
-                      <p className="px-3 pt-2 text-xs font-medium text-muted-foreground">Do TMDB</p>
-                      {externalSuggestions.map((item) => (
-                        <SuggestionButton key={item.id} item={item} onSelect={applyLookupResult} />
-                      ))}
+                  {(tmdbOptions.length > 0 || lookup.failed) && (
+                    <div role="group" aria-labelledby={`${LISTBOX_ID}-tmdb`}>
+                      <p id={`${LISTBOX_ID}-tmdb`} className="px-3 pt-2 text-xs font-medium text-muted-foreground">
+                        Do TMDB
+                      </p>
+                      {lookup.failed ? (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">
+                          Sugestões do TMDB indisponíveis no momento.
+                        </p>
+                      ) : (
+                        tmdbOptions.map((option) => (
+                          <SuggestionOption key={option.key} option={option} active={option.key === activeKey} />
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -320,6 +412,7 @@ function ContentFormDialog({
                     id={`streaming-${streaming.id}`}
                     checked={formData.streaming_ids.includes(streaming.id)}
                     onCheckedChange={(checked) => {
+                      streamingsFromSuggestion.current = false
                       if (checked) {
                         setFormData({
                           ...formData,
