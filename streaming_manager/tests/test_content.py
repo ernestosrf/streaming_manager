@@ -36,6 +36,19 @@ def test_meta_exposes_admin_username(client, app):
     assert response.get_json()['admin_username'] == 'admin'
 
 
+def test_health_check_queries_database(client, app):
+    response = client.get('/api/health')
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'healthy'
+
+
+def test_health_check_reports_database_failure(client, app):
+    db.drop_all()
+    response = client.get('/api/health')
+    assert response.status_code == 503
+    assert response.get_json()['status'] == 'unhealthy'
+
+
 def test_inactive_account_watchlist_is_unavailable(client, app):
     from src.models.user import STATUS_INACTIVE
     create_admin()

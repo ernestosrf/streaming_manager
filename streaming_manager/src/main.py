@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
@@ -17,7 +18,7 @@ from flask_migrate import Migrate
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.models.db import db
-from src.models.user import User  # noqa: F401
+from src.models.user import User
 from src.models.content import Content, StreamingPlatform, ContentStreaming  # noqa: F401
 from src.routes.content import content_bp
 from src.routes.streaming import streaming_bp
@@ -104,6 +105,11 @@ def create_app(config_overrides=None):
 
     @app.route('/api/health')
     def health_check():
+        try:
+            db.session.execute(db.select(User.id).limit(1))
+        except SQLAlchemyError:
+            app.logger.exception('Falha ao consultar o banco no health check')
+            return jsonify({'status': 'unhealthy', 'message': 'Database unavailable'}), 503
         return jsonify({'status': 'healthy', 'message': 'API is running'})
 
     @app.route('/api/meta')
