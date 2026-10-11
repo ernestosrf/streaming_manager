@@ -1,17 +1,8 @@
-# Mantém o projeto Supabase (plano gratuito) ativo.
-# O Supabase pausa projetos gratuitos após 7 dias sem atividade; este job
-# executa uma consulta real no banco uma vez por dia para registrar atividade.
-#
-# Requer o secret SUPABASE_DATABASE_URL (Settings > Secrets and variables > Actions)
-# com a connection string do pooler (IPv4), ex.:
-# postgresql://postgres.<ref>:<senha>@aws-0-<regiao>.pooler.supabase.com:5432/postgres
-
+# Testa sob demanda o acesso ao projeto Supabase (plano gratuito)
 name: Supabase keep-alive
 
 on:
-  schedule:
-    - cron: '0 9 * * *' # diariamente às 09:00 UTC (06:00 BRT)
-  workflow_dispatch: # permite execução manual pela aba Actions
+  workflow_dispatch: # execução manual pela aba Actions
 
 jobs:
   ping:
