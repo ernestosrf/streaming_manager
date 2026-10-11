@@ -7,6 +7,7 @@ import LoginPage from '@/pages/LoginPage.jsx'
 import RegisterPage from '@/pages/RegisterPage.jsx'
 import AccountPage from '@/pages/AccountPage.jsx'
 import AdminPage from '@/pages/AdminPage.jsx'
+import tmdbLogo from '@/assets/tmdb-logo.svg'
 import './App.css'
 
 function Layout() {
@@ -14,6 +15,13 @@ function Layout() {
     <div className="min-h-screen bg-background">
       <AppHeader />
       <Outlet />
+      <footer className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-6 text-center text-xs text-muted-foreground">
+        <span>Dados e pôsteres de filmes e séries:</span>
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">
+          <img src={tmdbLogo} alt="TMDB" className="h-2.5" />
+        </a>
+        <span>Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.</span>
+      </footer>
     </div>
   )
 }

@@ -1,15 +1,19 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, request, jsonify
 from sqlalchemy import and_, func, not_
 from sqlalchemy.orm import selectinload
 from src.models.content import Content, StreamingPlatform, ContentStreaming
 from src.models.db import db
 from src.models.user import User, STATUS_ACTIVE
+from src.services import tmdb
 from src.utils.auth import current_user_required, get_admin_user, get_user_from_jwt
+from src.utils.rate_limit import limiter
 from src.utils.responses import json_object_body, server_error
 from src.utils.validators import VALID_CONTENT_TYPES, validate_content_payload
 from flask_jwt_extended import jwt_required
 
 content_bp = Blueprint('content', __name__)
+
+MAX_LOOKUP_QUERY_LENGTH = 100
 
 
 def _parse_year(value):
@@ -239,6 +243,26 @@ def suggest_content(current_user):
             break
 
     return jsonify(suggestions)
+
+
+@content_bp.route('/content/lookup', methods=['GET'])
+@limiter.limit('60 per minute')
+@current_user_required
+def lookup_external_content(current_user):
+    """Busca o título no TMDB para pré-preencher ano, gênero, tipo e pôster."""
+    query_text = (request.args.get('q') or '').strip()[:MAX_LOOKUP_QUERY_LENGTH]
+    if len(query_text) < 2:
+        return jsonify([])
+
+    api_key = current_app.config.get('TMDB_API_KEY')
+    if not api_key:
+        return jsonify({'error': 'Busca externa não configurada.'}), 503
+
+    try:
+        return jsonify(tmdb.search(query_text, api_key))
+    except tmdb.TmdbError as exc:
+        current_app.logger.warning('Falha ao consultar o TMDB: %s', exc)
+        return jsonify({'error': 'Busca externa indisponível no momento.'}), 502
 
 
 @content_bp.route('/content', methods=['POST'])

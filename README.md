@@ -13,6 +13,7 @@ O Streaming Manager cataloga filmes, séries e animes disponíveis em diferentes
 - Cadastro com aprovação manual do administrador
 - Edição apenas pelo dono da lista
 - Sugestões de conteúdo a partir de outras watchlists ativas (cópia independente)
+- Cadastro assistido: ao digitar o título, ano, tipo, gênero e pôster vêm do [TMDB](https://www.themoviedb.org/)
 - Painel administrativo para contas, senhas e plataformas globais
 
 ## Desenvolvimento local
@@ -65,6 +66,7 @@ Acesse `http://localhost:5000`.
 | `ADMIN_PASSWORD` | Senha do administrador **inicial** (mínimo 8 caracteres; somente a primeira migração) |
 | `CORS_ORIGINS` | Origens permitidas, separadas por vírgula. Em produção, use o domínio real |
 | `DATABASE_URL` | Postgres em produção. Vazio = SQLite em `src/database/app.db` |
+| `TMDB_API_KEY` | Chave v3 ou token de leitura v4 do TMDB. Vazio = cadastro sem a busca externa |
 
 Depois da primeira migração, o login consulta usuários e hashes no banco. As credenciais de ambiente deixam de ser o mecanismo normal de autenticação.
 
